@@ -1,4 +1,4 @@
-// app/(pages)/layout.tsx
+
 import Navbar from "@/components/navbar";
 
 export default function PagesLayout({
@@ -9,7 +9,7 @@ export default function PagesLayout({
   return (
     <div className="flex flex-col min-h-screen">
       {/* Persistent Sidebar or Navbar for dashboard/inventory/orders/settings */}
-      
+      <Navbar/>
 
       {/* Main content area for whichever page is currently active */}
       <main className="flex-1 p-6">
