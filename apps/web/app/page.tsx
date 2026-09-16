@@ -1,19 +1,20 @@
 // app/page.tsx
-import Link from "next/link";
+'use client';
 
-export default function HomePage() {
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+
+export default function RootPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // 1. Redirect to Splash first
+    router.replace('/splash');
+  }, [router]);
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen gap-6 text-center">
-      <h1 className="text-4xl font-bold">Welcome to Our Platform</h1>
-      <p className="text-gray-600 max-w-md">
-        Manage your inventory, track orders, and monitor dashboard analytics all in one place.
-      </p>
-      <Link 
-        href="/dashboard" 
-        className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition"
-      >
-        Go to Dashboard
-      </Link>
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
     </div>
   );
 }
