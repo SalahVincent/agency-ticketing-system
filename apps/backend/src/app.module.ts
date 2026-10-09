@@ -8,6 +8,7 @@ import { AgenciesModule } from './agencies/agencies.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { ScannerModule } from './scanner/scanner.module';
 import { OrdersModule } from './orders/orders.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 // import { SchedulesModule } from './schedules/schedules.module';
 
 @Module({
@@ -28,6 +29,7 @@ import { OrdersModule } from './orders/orders.module';
     TelegramModule,
     ScannerModule,
     OrdersModule,
+    DashboardModule,
     // SchedulesModule,
   ],
 })

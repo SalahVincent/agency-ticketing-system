@@ -16,22 +16,48 @@ export class AgenciesService {
     });
   }
 
-  async getAgencySchedules(agencyId: string) {
+  async getAllSchedules() {
     return this.prisma.routeSchedule.findMany({
       where: {
-        agencyId,
-        status: 'ON_TIME',
+        status: { not: 'CANCELLED' },
       },
       select: {
         id: true,
+        agencyId: true,
         origin: true,
         destination: true,
         departureTime: true,
         busName: true,
+        busNumber: true,
         busType: true,
         pricePerSeat: true,
         totalSeats: true,
         bookedSeats: true,
+        status: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async getAgencySchedules(agencyId: string) {
+    return this.prisma.routeSchedule.findMany({
+      where: {
+        agencyId,
+        status: { not: 'CANCELLED' },
+      },
+      select: {
+        id: true,
+        agencyId: true,
+        origin: true,
+        destination: true,
+        departureTime: true,
+        busName: true,
+        busNumber: true,
+        busType: true,
+        pricePerSeat: true,
+        totalSeats: true,
+        bookedSeats: true,
+        status: true,
       },
       orderBy: { createdAt: 'asc' },
     });
