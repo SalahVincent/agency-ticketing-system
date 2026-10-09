@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { fetchApi } from '@/lib/api';
 
 type BusType = 'minibus' | 'coaster' | 'ultra_vip' | 'vip_2x2' | 'classic_3x2';
 
@@ -18,6 +19,60 @@ interface RouteSchedule {
   pricePerSeat: number;
   status: 'On Time' | 'Boarding' | 'Departed';
 }
+
+const formatDepartureTime = (value: string): string => {
+  if (!value) return '—';
+
+  const timeMatch = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!timeMatch) return value;
+
+  const hour = Number(timeMatch[1]);
+  const minute = timeMatch[2];
+  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const normalizedHour = hour % 12 === 0 ? 12 : hour % 12;
+
+  return `${normalizedHour}:${minute} ${suffix}`;
+};
+
+const normalizeSchedule = (item: any): RouteSchedule => {
+  const busTypeMap: Record<string, BusType> = {
+    MINIBUS: 'minibus',
+    COASTER: 'coaster',
+    ULTRA_VIP: 'ultra_vip',
+    VIP_2X2: 'vip_2x2',
+    CLASSIC_3X2: 'classic_3x2',
+  };
+
+  const busType = busTypeMap[String(item.busType)] ?? 'vip_2x2';
+  const busTypeNameMap: Record<BusType, string> = {
+    minibus: 'Express Van (19 Seats)',
+    coaster: 'Coaster Midibus (26 Seats)',
+    ultra_vip: 'Ultra-VIP Coach (2x1 Layout)',
+    vip_2x2: 'Standard VIP Coach (2x2 Layout)',
+    classic_3x2: 'High-Capacity Coach (3x2 Layout)',
+  };
+
+  const statusMap: Record<string, RouteSchedule['status']> = {
+    ON_TIME: 'On Time',
+    BOARDING: 'Boarding',
+    DEPARTED: 'Departed',
+  };
+
+  return {
+    id: item.id,
+    origin: item.origin,
+    destination: item.destination,
+    departureTime: formatDepartureTime(item.departureTime),
+    busNumber: item.busNumber ?? '—',
+    busName: item.busName ?? 'Unnamed Route',
+    busType,
+    busTypeName: busTypeNameMap[busType],
+    totalSeats: Number(item.totalSeats ?? 0),
+    bookedSeats: Number(item.bookedSeats ?? 0),
+    pricePerSeat: Number(item.pricePerSeat ?? 0),
+    status: statusMap[String(item.status)] ?? 'On Time',
+  };
+};
 
 interface ClientProfile {
   id: string;
@@ -52,64 +107,26 @@ export default function InventoryPage() {
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
 
-  const [schedules, setSchedules] = useState<RouteSchedule[]>([
-    {
-      id: 'SCH-101',
-      origin: 'Yaoundé',
-      destination: 'Douala',
-      departureTime: '10:30 AM',
-      busNumber: 'LT-849-AA',
-      busName: 'La Panthère VIP',
-      busType: 'vip_2x2',
-      busTypeName: 'Standard VIP Coach (2x2)',
-      totalSeats: 49,
-      bookedSeats: 32,
-      pricePerSeat: 6000,
-      status: 'Boarding',
-    },
-    {
-      id: 'SCH-102',
-      origin: 'Yaoundé',
-      destination: 'Bafoussam',
-      departureTime: '01:00 PM',
-      busNumber: 'CE-112-BA',
-      busName: 'Le Koung-Mou Express',
-      busType: 'minibus',
-      busTypeName: 'Express Van (19 Seats)',
-      totalSeats: 19,
-      bookedSeats: 12,
-      pricePerSeat: 4500,
-      status: 'On Time',
-    },
-    {
-      id: 'SCH-103',
-      origin: 'Yaoundé',
-      destination: 'Kribi',
-      departureTime: '02:30 PM',
-      busNumber: 'SU-409-XY',
-      busName: 'Ocean Star Coaster',
-      busType: 'coaster',
-      busTypeName: 'Coaster Midibus (26 Seats)',
-      totalSeats: 26,
-      bookedSeats: 18,
-      pricePerSeat: 5000,
-      status: 'On Time',
-    },
-    {
-      id: 'SCH-104',
-      origin: 'Yaoundé',
-      destination: 'Garoua',
-      departureTime: '06:00 PM',
-      busNumber: 'NO-991-ZZ',
-      busName: 'Sahel Gold Luxury',
-      busType: 'ultra_vip',
-      busTypeName: 'Ultra-VIP Coach (2x1)',
-      totalSeats: 30,
-      bookedSeats: 24,
-      pricePerSeat: 15000,
-      status: 'On Time',
-    },
-  ]);
+  const [schedules, setSchedules] = useState<RouteSchedule[]>([]);
+  const [inventoryError, setInventoryError] = useState('');
+
+  useEffect(() => {
+    const loadSchedules = async () => {
+      try {
+        const response = await fetchApi<any[]>('/agencies/schedules');
+        const normalized = response.map(normalizeSchedule);
+        setSchedules(normalized);
+        if (normalized.length > 0) {
+          setSelectedRoute((current) => current ?? normalized[0].id);
+        }
+      } catch (error) {
+        console.error('Failed to load inventory schedules', error);
+        setInventoryError('Unable to load live route inventory.');
+      }
+    };
+
+    loadSchedules();
+  }, []);
 
   const [newOrigin, setNewOrigin] = useState('Yaoundé');
   const [newDestination, setNewDestination] = useState('Douala');
@@ -157,7 +174,22 @@ export default function InventoryPage() {
     { id: 'CLI-03', name: 'Dr. Samuel Ngu', phone: '+237 655 889 900', companyName: 'Ngu Medical Center' },
   ];
 
-  const currentBus = schedules.find((s) => s.id === selectedRoute) || schedules[0];
+  const currentBus: RouteSchedule =
+    schedules.find((s) => s.id === selectedRoute) ||
+    schedules[0] || {
+      id: '',
+      origin: '',
+      destination: '',
+      departureTime: '',
+      busNumber: '',
+      busName: 'No active route',
+      busType: 'vip_2x2',
+      busTypeName: 'Standard VIP Coach (2x2 Layout)',
+      totalSeats: 0,
+      bookedSeats: 0,
+      pricePerSeat: 0,
+      status: 'On Time',
+    };
 
   const getBusDetails = (type: BusType): { name: string; capacity: number } => {
     switch (type) {
@@ -373,63 +405,76 @@ export default function InventoryPage() {
 
             {/* Responsive Routes Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-              {schedules.map((item) => {
-                const isSelected = item.id === selectedRoute;
-                const available = item.totalSeats - item.bookedSeats;
+              {inventoryError ? (
+                <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  {inventoryError}
+                </div>
+              ) : schedules.length === 0 ? (
+                <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-[#4c4546]">
+                  No live route schedules available right now.
+                </div>
+              ) : (
+                schedules.map((item) => {
+                  const isSelected = item.id === selectedRoute;
+                  const available = item.totalSeats - item.bookedSeats;
 
-                return (
-                  <div
-                    key={item.id}
-                    onClick={() => setSelectedRoute(item.id)}
-                    className={`backdrop-blur-xl border rounded-2xl sm:rounded-3xl p-4 sm:p-5 cursor-pointer transition-all ${
-                      isSelected
-                        ? 'bg-black text-white border-black shadow-lg scale-[1.01]'
-                        : 'bg-white border-slate-200/80 hover:bg-slate-50 text-[#1a1c1c]'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start mb-2 gap-2">
-                      <div className="min-w-0">
-                        <span className="text-[9px] uppercase font-bold text-emerald-500 tracking-wider">Bus Name</span>
-                        <h4 className={`text-sm sm:text-base font-extrabold truncate ${isSelected ? 'text-emerald-400' : 'text-[#1a1c1c]'}`}>
-                          "{item.busName}"
-                        </h4>
-                      </div>
-                      <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-black/5 text-[#4c4546]'}`}>
-                        {item.busNumber}
-                      </span>
-                    </div>
-
-                    <div className="mb-3 pt-1 border-t border-gray-100/10">
-                      <h3 className="text-sm sm:text-base font-bold flex items-center gap-1">
-                        <span>{item.origin}</span>
-                        <span className="material-symbols-outlined text-xs">arrow_forward</span>
-                        <span>{item.destination}</span>
-                      </h3>
-                      <div className="flex justify-between items-center mt-1">
-                        <p className={`text-xs ${isSelected ? 'text-gray-300' : 'text-[#7e7576]'}`}>
-                          Dep: <span className="font-semibold">{item.departureTime}</span>
-                        </p>
-                        <span className={`text-xs font-bold ${isSelected ? 'text-emerald-400' : 'text-emerald-700'}`}>
-                          {item.pricePerSeat} FCFA
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => setSelectedRoute(item.id)}
+                      className={`backdrop-blur-xl border rounded-2xl sm:rounded-3xl p-4 sm:p-5 cursor-pointer transition-all ${
+                        isSelected
+                          ? 'bg-black text-white border-black shadow-lg scale-[1.01]'
+                          : 'bg-white border-slate-200/80 hover:bg-slate-50 text-[#1a1c1c]'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start mb-2 gap-2">
+                        <div className="min-w-0">
+                          <span className="text-[9px] uppercase font-bold text-emerald-500 tracking-wider">Bus Name</span>
+                          <h4 className={`text-sm sm:text-base font-extrabold truncate ${isSelected ? 'text-emerald-400' : 'text-[#1a1c1c]'}`}>
+                            "{item.busName}"
+                          </h4>
+                        </div>
+                        <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-black/5 text-[#4c4546]'}`}>
+                          {item.busNumber}
                         </span>
                       </div>
-                      <span className={`inline-block text-[10px] font-semibold mt-2 px-2 py-0.5 rounded truncate max-w-full ${isSelected ? 'bg-white/10 text-emerald-300' : 'bg-emerald-50 text-emerald-800'}`}>
-                        {item.busTypeName}
-                      </span>
-                    </div>
 
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-[11px] font-medium">
-                        <span>{available} left</span>
-                        <span>{item.bookedSeats}/{item.totalSeats} Booked</span>
+                      <div className="mb-3 pt-1 border-t border-gray-100/10">
+                        <h3 className="text-sm sm:text-base font-bold flex items-center gap-1">
+                          <span>{item.origin}</span>
+                          <span className="material-symbols-outlined text-xs">arrow_forward</span>
+                          <span>{item.destination}</span>
+                        </h3>
+                        <div className="flex justify-between items-center mt-1">
+                          <p className={`text-xs ${isSelected ? 'text-gray-300' : 'text-[#7e7576]'}`}>
+                            Dep: <span className="font-semibold">{item.departureTime}</span>
+                          </p>
+                          <span className={`text-xs font-bold ${isSelected ? 'text-emerald-400' : 'text-emerald-700'}`}>
+                            {item.pricePerSeat} FCFA
+                          </span>
+                        </div>
+                        <span className={`inline-block text-[10px] font-semibold mt-2 px-2 py-0.5 rounded truncate max-w-full ${isSelected ? 'bg-white/10 text-emerald-300' : 'bg-emerald-50 text-emerald-800'}`}>
+                          {item.busTypeName}
+                        </span>
                       </div>
-                      <div className={`w-full h-1.5 sm:h-2 rounded-full overflow-hidden ${isSelected ? 'bg-white/20' : 'bg-gray-200'}`}>
-                        <div className={`h-full ${isSelected ? 'bg-emerald-400' : 'bg-black'}`} style={{ width: `${(item.bookedSeats / item.totalSeats) * 100}%` }} />
+
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-[11px] font-medium">
+                          <span>{available} left</span>
+                          <span>{item.bookedSeats}/{item.totalSeats} Booked</span>
+                        </div>
+                        <div className={`w-full h-1.5 sm:h-2 rounded-full overflow-hidden ${isSelected ? 'bg-white/20' : 'bg-gray-200'}`}>
+                          <div
+                            className={`h-full ${isSelected ? 'bg-emerald-400' : 'bg-black'}`}
+                            style={{ width: `${item.totalSeats ? (item.bookedSeats / item.totalSeats) * 100 : 0}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
 
             {/* Responsive Bus Layout Map Canvas */}
