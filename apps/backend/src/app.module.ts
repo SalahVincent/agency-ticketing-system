@@ -6,8 +6,8 @@ import { AuthModule } from './auth/auth.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { AgenciesModule } from './agencies/agencies.module';
 import { TelegramModule } from './telegram/telegram.module';
-// import { OrdersModule } from './orders/orders.module';
-// import { ScannerModule } from './scanner/scanner.module';
+import { ScannerModule } from './scanner/scanner.module';
+import { OrdersModule } from './orders/orders.module';
 // import { SchedulesModule } from './schedules/schedules.module';
 
 @Module({
@@ -26,8 +26,8 @@ import { TelegramModule } from './telegram/telegram.module';
     AgenciesModule,
     WhatsappModule,
     TelegramModule,
-    // OrdersModule,
-    // ScannerModule,
+    ScannerModule,
+    OrdersModule,
     // SchedulesModule,
   ],
 })
