@@ -1,0 +1,148 @@
+
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+// Global Enums
+enum BusType {
+  MINIBUS
+  COASTER
+  ULTRA_VIP
+  VIP_2X2
+  CLASSIC_3X2
+}
+
+enum ScheduleStatus {
+  ON_TIME
+  BOARDING
+  DEPARTED
+  CANCELLED
+}
+
+enum TicketStatus {
+  CONFIRMED
+  BOARDED
+  CANCELLED
+}
+
+enum ShiftStatus {
+  ON_DUTY
+  OFF_DUTY
+}
+
+enum ResponseType {
+  AUTO_REPLY
+  SCHEDULE_LOOKUP
+  SEAT_RESERVATION
+}
+
+// Models
+
+model Agency {
+  id               String          @id @default(uuid())
+  name             String
+  agencyCode       String          @unique
+  hqLocation       String
+  activeFleetCount String
+  schedules        RouteSchedule[]
+  tickets          Ticket[]
+  agents           Agent[]
+  botConfig        BotConfig?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+}
+
+model Agent {
+  id             String      @id @default(uuid())
+  agencyId       String
+  agency         Agency      @relation(fields: [agencyId], references: [id])
+  agentCode      String      @unique
+  name           String
+  email          String      @unique
+  password       String
+  phone          String
+  role           String
+  station        String
+  shiftStatus    ShiftStatus @default(OFF_DUTY)
+  scannedTickets Ticket[]    @relation("ValidatedBy")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model Customer {
+  id            String   @id @default(uuid())
+  whatsappPhone String   @unique
+  name          String
+  tickets       Ticket[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model RouteSchedule {
+  id            String         @id @default(uuid())
+  agencyId      String
+  agency        Agency         @relation(fields: [agencyId], references: [id])
+  origin        String
+  destination   String
+  departureTime String
+  busNumber     String
+  busName       String
+  busType       BusType
+  totalSeats    Int
+  bookedSeats   Int            @default(0)
+  pricePerSeat  Float
+  status        ScheduleStatus @default(ON_TIME)
+  tickets       Ticket[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Ticket {
+  id              String        @id @default(uuid())
+  ticketId        String        @unique
+  orderId         String        @unique
+  agencyId        String
+  agency          Agency        @relation(fields: [agencyId], references: [id])
+  scheduleId      String
+  schedule        RouteSchedule @relation(fields: [scheduleId], references: [id])
+  customerId      String
+  customer        Customer      @relation(fields: [customerId], references: [id])
+  seatNo          String
+  amount          Float
+  status          TicketStatus  @default(CONFIRMED)
+  validatedById   String?
+  validatedBy     Agent?        @relation("ValidatedBy", fields: [validatedById], references: [id])
+  boardedAt       DateTime?
+  qrCodeSignature String        @unique
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model BotConfig {
+  id             String    @id @default(uuid())
+  agencyId       String    @unique
+  agency         Agency    @relation(fields: [agencyId], references: [id])
+  botPhoneNumber String
+  welcomeMessage String
+  status         String    @default("active")
+  rules          BotRule[]
+  updatedAt      DateTime  @updatedAt
+}
+
+model BotRule {
+  id            String       @id @default(uuid())
+  botConfigId   String
+  botConfig     BotConfig    @relation(fields: [botConfigId], references: [id], onDelete: Cascade)
+  keyword       String
+  responseType  ResponseType
+  replyTemplate String
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+}

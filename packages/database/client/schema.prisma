@@ -1,4 +1,4 @@
-// prisma/schema.prisma
+// packages/database/prisma/schema.prisma
 
 datasource db {
   provider = "postgresql"
@@ -7,6 +7,7 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../client"
 }
 
 // Global Enums
