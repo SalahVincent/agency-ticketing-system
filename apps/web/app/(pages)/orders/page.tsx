@@ -1,8 +1,21 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { fetchApi } from '@/lib/api';
 
 interface TravelOrder {
+  id: string;
+  ticketId: string;
+  customerName: string;
+  phone: string;
+  route: string;
+  travelDate: string;
+  seatNo: string;
+  amount: number;
+  status: 'Confirmed' | 'Boarded' | 'Cancelled';
+}
+
+interface ApiOrder {
   id: string;
   ticketId: string;
   customerName: string;
@@ -18,50 +31,36 @@ export default function OrdersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'All' | 'Confirmed' | 'Boarded' | 'Cancelled'>('All');
   const [selectedOrder, setSelectedOrder] = useState<TravelOrder | null>(null);
+  const [orders, setOrders] = useState<TravelOrder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const orders: TravelOrder[] = [
-    {
-      id: 'ORD-9021',
-      ticketId: 'TKT-YAO-01',
-      customerName: 'Jean Dupont',
-      phone: '+237 670 019 283',
-      route: 'Yaoundé ➔ Douala',
-      travelDate: 'Today, 10:30 AM',
-      seatNo: 'Seat 14',
-      amount: 6000,
-      status: 'Boarded',
-    },
-    {
-      id: 'ORD-9022',
-      ticketId: 'TKT-YAO-04',
-      customerName: 'Marie Claire',
-      phone: '+237 699 827 109',
-      route: 'Yaoundé ➔ Bafoussam',
-      travelDate: 'Today, 01:00 PM',
-      seatNo: 'Seat 08',
-      amount: 4500,
-      status: 'Confirmed',
-    },
-    {
-      id: 'ORD-9023',
-      ticketId: 'TKT-DLA-12',
-      customerName: 'Samuel Eto',
-      phone: '+237 655 345 981',
-      route: 'Douala ➔ Bamenda',
-      travelDate: 'Tomorrow, 08:00 AM',
-      seatNo: 'Seat 02',
-      amount: 7000,
-      status: 'Cancelled',
-    },
-  ];
+  useEffect(() => {
+    const loadOrders = async () => {
+      try {
+        const data = await fetchApi<ApiOrder[]>('/orders');
+        setOrders(data);
+      } catch (err) {
+        console.error('Failed to load orders', err);
+        setError('Could not load passenger bookings right now.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadOrders();
+  }, []);
 
   const filteredOrders = orders.filter((order) => {
     const matchesFilter = selectedFilter === 'All' || order.status === selectedFilter;
+    const searchValue = searchQuery.trim().toLowerCase();
     const matchesSearch =
-      order.phone.includes(searchQuery) ||
-      order.ticketId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.route.toLowerCase().includes(searchQuery.toLowerCase());
+      searchValue.length === 0 ||
+      order.phone.toLowerCase().includes(searchValue) ||
+      order.ticketId.toLowerCase().includes(searchValue) ||
+      order.customerName.toLowerCase().includes(searchValue) ||
+      order.route.toLowerCase().includes(searchValue);
+
     return matchesFilter && matchesSearch;
   });
 
@@ -125,8 +124,15 @@ export default function OrdersPage() {
           <div className="col-span-2 text-right">Actions</div>
         </div>
 
-        {/* Booking Item Rows */}
-        {filteredOrders.length === 0 ? (
+        {isLoading ? (
+          <div className="bg-white/60 backdrop-blur-xl rounded-3xl p-12 text-center text-[#7e7576]">
+            Loading passenger bookings...
+          </div>
+        ) : error ? (
+          <div className="bg-white/60 backdrop-blur-xl rounded-3xl p-12 text-center text-[#ba1a1a]">
+            {error}
+          </div>
+        ) : filteredOrders.length === 0 ? (
           <div className="bg-white/60 backdrop-blur-xl rounded-3xl p-12 text-center text-[#7e7576]">
             No passenger orders match your query.
           </div>

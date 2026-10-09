@@ -3,35 +3,91 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import jsQR from 'jsqr';
 
-interface VerificationData {
-  name: string;
-  seatInfo: string;
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
+
+interface TicketInfo {
+  ticketId: string;
+  passengerName: string;
+  seatNo: string;
+  route: string;
+  departureTime: string;
+  agencyName: string;
+  boardedAt: string | null;
 }
+
+type Outcome = {
+  kind: 'VERIFIED' | 'ALREADY_BOARDED' | 'INVALID' | 'CANCELLED' | 'ERROR';
+  message: string;
+  ticket?: TicketInfo;
+};
+
+const OUTCOME_UI: Record<
+  Outcome['kind'],
+  { icon: string; title: string; circle: string; text: string }
+> = {
+  VERIFIED: {
+    icon: 'check',
+    title: 'VERIFIED',
+    circle: 'bg-emerald-500 shadow-emerald-500/30',
+    text: 'text-emerald-700',
+  },
+  ALREADY_BOARDED: {
+    icon: 'warning',
+    title: 'ALREADY BOARDED',
+    circle: 'bg-amber-500 shadow-amber-500/30',
+    text: 'text-amber-700',
+  },
+  INVALID: {
+    icon: 'close',
+    title: 'INVALID TICKET',
+    circle: 'bg-red-500 shadow-red-500/30',
+    text: 'text-red-700',
+  },
+  CANCELLED: {
+    icon: 'block',
+    title: 'TICKET CANCELLED',
+    circle: 'bg-red-500 shadow-red-500/30',
+    text: 'text-red-700',
+  },
+  ERROR: {
+    icon: 'wifi_off',
+    title: 'CONNECTION ERROR',
+    circle: 'bg-red-500 shadow-red-500/30',
+    text: 'text-red-700',
+  },
+};
+
+const formatTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
 export default function QRScannerPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isVerifyingRef = useRef<boolean>(false);
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [manualCode, setManualCode] = useState<string>('');
-  
-  // Scanned / Verified state
-  const [scannedData, setScannedData] = useState<VerificationData | null>(null);
+
+  // Result of the last scan
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [isScanningActive, setIsScanningActive] = useState<boolean>(true);
 
   // Initialize and start live camera stream
   const startCamera = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: { exact: 'environment' } 
-        }
-      }).catch(() => {
-        // Fallback to standard environment facing mode if exact constraint fails
-        return navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      });
-      
+      const stream = await navigator.mediaDevices
+        .getUserMedia({
+          video: {
+            facingMode: { exact: 'environment' },
+          },
+        })
+        .catch(() => {
+          // Fallback if the exact constraint fails (e.g. laptops)
+          return navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        });
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.setAttribute('playsinline', 'true'); // Required for iOS Safari
@@ -62,6 +118,39 @@ export default function QRScannerPage() {
     };
   }, [startCamera, stopCamera]);
 
+  // Send a scanned/typed code to the backend and show the result
+  const verifyCode = useCallback(async (payload: string) => {
+    if (isVerifyingRef.current) return; // ignore duplicate detections of the same frame/QR
+    isVerifyingRef.current = true;
+    setIsVerifying(true);
+    setIsScanningActive(false);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+
+    try {
+      const res = await fetch(`${API_URL}/scanner/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: payload }),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      setOutcome({ kind: data.result, message: data.message, ticket: data.ticket });
+    } catch (err) {
+      console.error('Ticket validation failed:', err);
+      setOutcome({
+        kind: 'ERROR',
+        message: 'Could not reach the server. Check the connection and try again.',
+      });
+    } finally {
+      clearTimeout(timer);
+      setIsVerifying(false);
+    }
+  }, []);
+
   // Frame processing loop for QR code detection
   useEffect(() => {
     let animationFrameId: number;
@@ -88,7 +177,7 @@ export default function QRScannerPage() {
           });
 
           if (code && code.data) {
-            handleCodeSuccess(code.data);
+            verifyCode(code.data);
             return;
           }
         }
@@ -106,51 +195,31 @@ export default function QRScannerPage() {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [isScanningActive, hasPermission]);
-
-  const handleCodeSuccess = (payload: string) => {
-    setIsScanningActive(false);
-    
-    try {
-      const parsed = JSON.parse(payload);
-      setScannedData({
-        name: parsed.name || 'Alex Mercer',
-        seatInfo: parsed.seatInfo || 'Section A, Seat 14',
-      });
-    } catch {
-      setScannedData({
-        name: 'Alex Mercer',
-        seatInfo: `Ticket #${payload.slice(0, 8)}`,
-      });
-    }
-  };
+  }, [isScanningActive, hasPermission, verifyCode]);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualCode.trim()) return;
-    handleCodeSuccess(manualCode);
+    verifyCode(manualCode);
     setManualCode('');
   };
 
   const handleResetScanner = () => {
-    setScannedData(null);
+    isVerifyingRef.current = false;
+    setOutcome(null);
     setIsScanningActive(true);
   };
 
+  const ui = outcome ? OUTCOME_UI[outcome.kind] : null;
+
   return (
     <div className="fixed inset-0 w-screen h-screen h-[100dvh] bg-black text-[#1a1c1c] font-sans overflow-hidden select-none touch-none flex flex-col justify-between z-50">
-      
       {/* Hidden Canvas for QR frame analysis */}
       <canvas ref={canvasRef} className="hidden" />
 
       {/* Full-bleed Camera Viewport */}
       <div className="absolute inset-0 z-0 w-full h-full overflow-hidden">
-        <video
-          ref={videoRef}
-          className="w-full h-full object-cover"
-          playsInline
-          muted
-        />
+        <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
 
         {/* Camera Permission Error Overlay */}
         {hasPermission === false && (
@@ -172,7 +241,7 @@ export default function QRScannerPage() {
 
       {/* Top Action Overlay Bar (Safe Area Compliant) */}
       <div className="relative z-20 w-full pt-[calc(1rem+env(safe-area-inset-top))] px-5 flex items-center justify-between">
-        <button 
+        <button
           type="button"
           onClick={() => window.history.back()}
           className="bg-white/90 backdrop-blur-md text-[#1a1c1c] p-3 rounded-full shadow-lg active:scale-95 transition-transform flex items-center justify-center cursor-pointer"
@@ -182,7 +251,7 @@ export default function QRScannerPage() {
         </button>
 
         <div className="bg-black/40 backdrop-blur-md border border-white/20 text-white px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide">
-          Scanner Active
+          {isVerifying ? 'Checking ticket…' : 'Scanner Active'}
         </div>
       </div>
 
@@ -199,35 +268,52 @@ export default function QRScannerPage() {
         </div>
       )}
 
-      {/* Scanned Verification Modal */}
-      {scannedData && (
+      {/* Verification Result Modal */}
+      {outcome && ui && (
         <div className="absolute inset-0 z-30 bg-black/60 backdrop-blur-md flex flex-col items-center justify-center p-6 transition-all">
           <div className="bg-white/90 backdrop-blur-2xl border border-white/60 shadow-2xl w-full max-w-xs rounded-3xl p-6 flex flex-col items-center text-center relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            
-            <div className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/30">
+            <div
+              className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 shadow-lg ${ui.circle}`}
+            >
               <span className="material-symbols-outlined text-white text-[32px] font-bold">
-                check
+                {ui.icon}
               </span>
             </div>
-            
-            <h2 className="text-xl font-extrabold text-emerald-700 tracking-tight mb-1">
-              VERIFIED
-            </h2>
-            <p className="text-lg font-bold text-[#1a1c1c] mb-1">
-              {scannedData.name}
+
+            <h2 className={`text-xl font-extrabold tracking-tight mb-1 ${ui.text}`}>{ui.title}</h2>
+
+            {outcome.ticket && (
+              <p className="text-lg font-bold text-[#1a1c1c] mb-1">{outcome.ticket.passengerName}</p>
+            )}
+
+            <p className="text-sm text-[#4c4546] mb-1">
+              {outcome.kind === 'ALREADY_BOARDED' && outcome.ticket?.boardedAt
+                ? `Already boarded at ${formatTime(outcome.ticket.boardedAt)}.`
+                : outcome.message}
             </p>
-            
-            <div className="flex items-center gap-2 text-[#4c4546] text-sm bg-gray-100 px-4 py-1.5 rounded-full mt-2 font-medium">
-              <span className="material-symbols-outlined text-[18px]">chair</span>
-              <span>{scannedData.seatInfo}</span>
-            </div>
+
+            {outcome.ticket && (
+              <>
+                <div className="flex items-center gap-2 text-[#4c4546] text-sm bg-gray-100 px-4 py-1.5 rounded-full mt-2 font-medium">
+                  <span className="material-symbols-outlined text-[18px]">chair</span>
+                  <span>Seat {outcome.ticket.seatNo}</span>
+                </div>
+                <p className="text-sm text-[#4c4546] mt-3 font-medium">{outcome.ticket.route}</p>
+                <p className="text-xs text-[#4c4546]/80">
+                  {outcome.ticket.agencyName} · {outcome.ticket.departureTime}
+                </p>
+                <p className="text-[11px] text-[#4c4546]/60 mt-1 font-mono">
+                  {outcome.ticket.ticketId}
+                </p>
+              </>
+            )}
 
             <button
               type="button"
               onClick={handleResetScanner}
               className="mt-6 bg-black text-white w-full py-3.5 rounded-full text-sm font-bold active:scale-95 transition-transform cursor-pointer shadow-md"
             >
-              Scan Next Ticket
+              {outcome.kind === 'VERIFIED' ? 'Scan Next Ticket' : 'Scan Again'}
             </button>
           </div>
         </div>
@@ -250,7 +336,6 @@ export default function QRScannerPage() {
           </div>
         </form>
       </div>
-
     </div>
   );
 }
