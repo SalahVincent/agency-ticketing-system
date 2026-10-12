@@ -48,7 +48,7 @@ export default function OrdersPage() {
         setOrders(data);
       } catch (err) {
         console.error("Failed to load orders", err);
-        setError("Could not load passenger bookings right now.");
+        setError(err instanceof Error ? err.message : "Could not load passenger bookings right now.");
       } finally {
         setIsLoading(false);
       }

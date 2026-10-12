@@ -58,7 +58,7 @@ export default function DashboardPage() {
         setSummary(data);
       } catch (err) {
         console.error("Failed to load dashboard summary", err);
-        setError("Could not load dashboard data right now.");
+        setError(err instanceof Error ? err.message : "Could not load dashboard data right now.");
       } finally {
         setIsLoading(false);
       }

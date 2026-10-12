@@ -1,17 +1,34 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useSignIn } from '@clerk/nextjs';
+import { useAuth, useSignIn } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { postApi } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { getToken } = useAuth();
   const { signIn } = useSignIn();
   const [formData, setFormData] = useState({ identifier: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isClerkSessionFinalized, setIsClerkSessionFinalized] = useState(false);
+
+  const finishSignIn = async () => {
+    if (!isClerkSessionFinalized) {
+      const finalizeResult = await signIn.finalize();
+      if (finalizeResult.error) {
+        setAuthError(finalizeResult.error.message || 'Unable to complete sign-in.');
+        return;
+      }
+      setIsClerkSessionFinalized(true);
+    }
+
+    await postApi('/agencies/register', getToken, {});
+    router.replace('/dashboard');
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -20,6 +37,11 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
+      if (isClerkSessionFinalized) {
+        await finishSignIn();
+        return;
+      }
+
       const { error } = await signIn.password({
         identifier: formData.identifier,
         password: formData.password,
@@ -35,19 +57,13 @@ export default function LoginPage() {
         return;
       }
 
-      const finalizeResult = await signIn.finalize();
-      if (finalizeResult.error) {
-        setAuthError(finalizeResult.error.message || 'Unable to complete sign-in.');
-        return;
-      }
-
-      router.replace('/dashboard');
+      await finishSignIn();
     } catch (error) {
       const clerkError = error as {
         errors?: Array<{ longMessage?: string; message?: string }>;
       };
       setAuthError(
-        clerkError.errors?.[0]?.longMessage ??
+        error instanceof Error ? error.message : clerkError.errors?.[0]?.longMessage ??
           clerkError.errors?.[0]?.message ??
           'Unable to sign in. Check your details and try again.',
       );
@@ -138,7 +154,9 @@ export default function LoginPage() {
             disabled={isSubmitting}
             className="w-full bg-[#1a1c1c] text-white font-semibold py-3.5 rounded-full hover:scale-[1.02] active:scale-95 transition-all shadow-md text-xs sm:text-sm cursor-pointer mt-2"
           >
-            {isSubmitting ? 'Signing In...' : 'Sign In'}
+            {isSubmitting
+              ? isClerkSessionFinalized ? 'Linking Agency...' : 'Signing In...'
+              : isClerkSessionFinalized ? 'Finish Agency Setup' : 'Sign In'}
           </button>
         </form>
 

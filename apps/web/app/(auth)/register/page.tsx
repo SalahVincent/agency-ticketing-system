@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useSignUp } from '@clerk/nextjs';
+import { useAuth, useSignUp } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { postApi } from '@/lib/api';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { getToken } = useAuth();
   const { signUp } = useSignUp();
   const [formData, setFormData] = useState({
     agencyName: '',
@@ -16,17 +18,28 @@ export default function RegisterPage() {
   });
   const [verificationCode, setVerificationCode] = useState('');
   const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
+  const [isClerkSessionFinalized, setIsClerkSessionFinalized] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authError, setAuthError] = useState('');
 
   const finishSignUp = async () => {
-    const { error } = await signUp.finalize();
-    if (error) {
-      setAuthError(error.message || 'Unable to complete registration.');
-      return;
+    if (!isClerkSessionFinalized) {
+      const { error } = await signUp.finalize();
+      if (error) {
+        setAuthError(error.message || 'Unable to complete registration.');
+        return;
+      }
+      setIsClerkSessionFinalized(true);
     }
 
-    router.replace('/dashboard');
+    try {
+      await postApi('/agencies/register', getToken, {
+        agencyName: formData.agencyName,
+      });
+      router.replace('/dashboard');
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Unable to link your agency. Please retry.');
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -35,6 +48,11 @@ export default function RegisterPage() {
     setIsSubmitting(true);
 
     try {
+      if (isClerkSessionFinalized) {
+        await finishSignUp();
+        return;
+      }
+
       if (isVerifyingEmail) {
         const { error } = await signUp.verifications.verifyEmailCode({
           code: verificationCode,
@@ -203,8 +221,12 @@ export default function RegisterPage() {
             className="w-full bg-[#1a1c1c] text-white font-semibold py-3.5 rounded-full hover:scale-[1.02] active:scale-95 transition-all shadow-md text-xs sm:text-sm cursor-pointer mt-4 disabled:opacity-60"
           >
             {isSubmitting
-              ? isVerifyingEmail ? 'Verifying...' : 'Creating Account...'
-              : isVerifyingEmail ? 'Verify Email' : 'Create Account'}
+              ? isClerkSessionFinalized
+                ? 'Linking Agency...'
+                : isVerifyingEmail ? 'Verifying...' : 'Creating Account...'
+              : isClerkSessionFinalized
+                ? 'Finish Agency Setup'
+                : isVerifyingEmail ? 'Verify Email' : 'Create Account'}
           </button>
         </form>
 

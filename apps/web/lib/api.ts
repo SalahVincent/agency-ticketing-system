@@ -4,6 +4,35 @@ export async function fetchApi<T>(
   path: string,
   getToken: () => Promise<string | null>,
 ): Promise<T> {
+  try {
+    return await requestApi<T>(path, getToken);
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== 'No agency linked to this account') {
+      throw error;
+    }
+
+    await postApi('/agencies/register', getToken, {});
+    return requestApi<T>(path, getToken);
+  }
+}
+
+export async function postApi<T>(
+  path: string,
+  getToken: () => Promise<string | null>,
+  body: unknown,
+): Promise<T> {
+  return requestApi<T>(path, getToken, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+async function requestApi<T>(
+  path: string,
+  getToken: () => Promise<string | null>,
+  options: RequestInit = {},
+): Promise<T> {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   const token = await getToken();
 
@@ -12,14 +41,23 @@ export async function fetchApi<T>(
   }
 
   const response = await fetch(`${API_BASE_URL}${normalizedPath}`, {
+    ...options,
     cache: 'no-store',
     headers: {
+      ...Object.fromEntries(new Headers(options.headers).entries()),
       Authorization: `Bearer ${token}`,
     },
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    const errorPayload = await response.json().catch(() => null) as {
+      message?: string | string[];
+    } | null;
+    const message = Array.isArray(errorPayload?.message)
+      ? errorPayload.message.join(', ')
+      : errorPayload?.message;
+
+    throw new Error(message || `API request failed: ${response.status}`);
   }
 
   return (await response.json()) as T;

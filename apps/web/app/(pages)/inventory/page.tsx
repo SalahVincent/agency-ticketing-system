@@ -131,7 +131,7 @@ export default function InventoryPage() {
         }
       } catch (error) {
         console.error("Failed to load inventory schedules", error);
-        setInventoryError("Unable to load live route inventory.");
+        setInventoryError(error instanceof Error ? error.message : "Unable to load live route inventory.");
       }
     };
 
@@ -155,6 +155,7 @@ export default function InventoryPage() {
         setCurrentBookedSeatNumbers(bookedSeats.map((seat) => Number(seat)));
       } catch (error) {
         console.error("Failed to load booked seat numbers", error);
+        setInventoryError(error instanceof Error ? error.message : "Unable to load booked seats.");
         setCurrentBookedSeatNumbers([]);
       }
     };
