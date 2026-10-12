@@ -1,9 +1,10 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { fetchApi } from '@/lib/api';
+import React, { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { fetchApi } from "@/lib/api";
 
-type BusType = 'minibus' | 'coaster' | 'ultra_vip' | 'vip_2x2' | 'classic_3x2';
+type BusType = "minibus" | "coaster" | "ultra_vip" | "vip_2x2" | "classic_3x2";
 
 interface RouteSchedule {
   id: string;
@@ -17,18 +18,18 @@ interface RouteSchedule {
   totalSeats: number;
   bookedSeats: number;
   pricePerSeat: number;
-  status: 'On Time' | 'Boarding' | 'Departed';
+  status: "On Time" | "Boarding" | "Departed";
 }
 
 const formatDepartureTime = (value: string): string => {
-  if (!value) return '—';
+  if (!value) return "—";
 
   const timeMatch = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
   if (!timeMatch) return value;
 
   const hour = Number(timeMatch[1]);
   const minute = timeMatch[2];
-  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const suffix = hour >= 12 ? "PM" : "AM";
   const normalizedHour = hour % 12 === 0 ? 12 : hour % 12;
 
   return `${normalizedHour}:${minute} ${suffix}`;
@@ -36,26 +37,26 @@ const formatDepartureTime = (value: string): string => {
 
 const normalizeSchedule = (item: any): RouteSchedule => {
   const busTypeMap: Record<string, BusType> = {
-    MINIBUS: 'minibus',
-    COASTER: 'coaster',
-    ULTRA_VIP: 'ultra_vip',
-    VIP_2X2: 'vip_2x2',
-    CLASSIC_3X2: 'classic_3x2',
+    MINIBUS: "minibus",
+    COASTER: "coaster",
+    ULTRA_VIP: "ultra_vip",
+    VIP_2X2: "vip_2x2",
+    CLASSIC_3X2: "classic_3x2",
   };
 
-  const busType = busTypeMap[String(item.busType)] ?? 'vip_2x2';
+  const busType = busTypeMap[String(item.busType)] ?? "vip_2x2";
   const busTypeNameMap: Record<BusType, string> = {
-    minibus: 'Express Van (19 Seats)',
-    coaster: 'Coaster Midibus (26 Seats)',
-    ultra_vip: 'Ultra-VIP Coach (2x1 Layout)',
-    vip_2x2: 'Standard VIP Coach (2x2 Layout)',
-    classic_3x2: 'High-Capacity Coach (3x2 Layout)',
+    minibus: "Express Van (19 Seats)",
+    coaster: "Coaster Midibus (26 Seats)",
+    ultra_vip: "Ultra-VIP Coach (2x1 Layout)",
+    vip_2x2: "Standard VIP Coach (2x2 Layout)",
+    classic_3x2: "High-Capacity Coach (3x2 Layout)",
   };
 
-  const statusMap: Record<string, RouteSchedule['status']> = {
-    ON_TIME: 'On Time',
-    BOARDING: 'Boarding',
-    DEPARTED: 'Departed',
+  const statusMap: Record<string, RouteSchedule["status"]> = {
+    ON_TIME: "On Time",
+    BOARDING: "Boarding",
+    DEPARTED: "Departed",
   };
 
   return {
@@ -63,14 +64,14 @@ const normalizeSchedule = (item: any): RouteSchedule => {
     origin: item.origin,
     destination: item.destination,
     departureTime: formatDepartureTime(item.departureTime),
-    busNumber: item.busNumber ?? '—',
-    busName: item.busName ?? 'Unnamed Route',
+    busNumber: item.busNumber ?? "—",
+    busName: item.busName ?? "Unnamed Route",
     busType,
     busTypeName: busTypeNameMap[busType],
     totalSeats: Number(item.totalSeats ?? 0),
     bookedSeats: Number(item.bookedSeats ?? 0),
     pricePerSeat: Number(item.pricePerSeat ?? 0),
-    status: statusMap[String(item.status)] ?? 'On Time',
+    status: statusMap[String(item.status)] ?? "On Time",
   };
 };
 
@@ -84,125 +85,175 @@ interface ClientProfile {
 interface BotRule {
   id: string;
   keyword: string;
-  responseType: 'auto_reply' | 'seat_reservation' | 'schedule_lookup';
+  responseType: "auto_reply" | "seat_reservation" | "schedule_lookup";
   replyTemplate: string;
   isActive: boolean;
 }
 
 export default function InventoryPage() {
-  const [selectedRoute, setSelectedRoute] = useState<string | null>('SCH-101');
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const [selectedRoute, setSelectedRoute] = useState<string | null>("SCH-101");
   const [showPreBookModal, setShowPreBookModal] = useState<boolean>(false);
-  const [showCreateSessionModal, setShowCreateSessionModal] = useState<boolean>(false);
+  const [showCreateSessionModal, setShowCreateSessionModal] =
+    useState<boolean>(false);
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
 
   const [stationAccount] = useState({
-    agencyName: 'General Express Voyage',
-    stationBranch: 'Yaoundé Central Terminal (Mvan)',
-    accountId: 'CMW-YDE-001',
+    agencyName: "General Express Voyage",
+    stationBranch: "Yaoundé Central Terminal (Mvan)",
+    accountId: "CMW-YDE-001",
   });
 
-  const [activeTab, setActiveTab] = useState<'inventory' | 'bot_creator'>('inventory');
+  const [activeTab, setActiveTab] = useState<"inventory" | "bot_creator">(
+    "inventory",
+  );
 
-  const [selectedClientId, setSelectedClientId] = useState<string>('');
-  const [clientName, setClientName] = useState('');
-  const [clientPhone, setClientPhone] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
 
   const [schedules, setSchedules] = useState<RouteSchedule[]>([]);
-  const [inventoryError, setInventoryError] = useState('');
+  const [currentBookedSeatNumbers, setCurrentBookedSeatNumbers] = useState<
+    number[]
+  >([]);
+  const [inventoryError, setInventoryError] = useState("");
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+
     const loadSchedules = async () => {
       try {
-        const response = await fetchApi<any[]>('/agencies/schedules');
+        const response = await fetchApi<any[]>("/agencies/schedules", getToken);
         const normalized = response.map(normalizeSchedule);
         setSchedules(normalized);
         if (normalized.length > 0) {
           setSelectedRoute((current) => current ?? normalized[0].id);
         }
       } catch (error) {
-        console.error('Failed to load inventory schedules', error);
-        setInventoryError('Unable to load live route inventory.');
+        console.error("Failed to load inventory schedules", error);
+        setInventoryError("Unable to load live route inventory.");
       }
     };
 
     loadSchedules();
-  }, []);
+  }, [getToken, isLoaded, isSignedIn]);
 
-  const [newOrigin, setNewOrigin] = useState('Yaoundé');
-  const [newDestination, setNewDestination] = useState('Douala');
-  const [newDepartureTime, setNewDepartureTime] = useState('08:00 AM');
-  const [newBusNumber, setNewBusNumber] = useState('');
-  const [newBusName, setNewBusName] = useState('');
-  const [newBusType, setNewBusType] = useState<BusType>('vip_2x2');
-  const [newPrice, setNewPrice] = useState('6000');
+  useEffect(() => {
+    if (!selectedRoute) {
+      setCurrentBookedSeatNumbers([]);
+      return;
+    }
 
-  const [botPhoneNumber, setBotPhoneNumber] = useState('+237 670 000 111');
-  const [botStatus, setBotStatus] = useState<'active' | 'paused' | 'offline'>('active');
+    if (!isLoaded || !isSignedIn) return;
+
+    const loadBookedSeats = async () => {
+      try {
+        const bookedSeats = await fetchApi<number[]>(
+          `/agencies/schedules/${selectedRoute}/booked-seats`,
+          getToken,
+        );
+        setCurrentBookedSeatNumbers(bookedSeats.map((seat) => Number(seat)));
+      } catch (error) {
+        console.error("Failed to load booked seat numbers", error);
+        setCurrentBookedSeatNumbers([]);
+      }
+    };
+
+    loadBookedSeats();
+  }, [getToken, isLoaded, isSignedIn, selectedRoute]);
+
+  const [newOrigin, setNewOrigin] = useState("Yaoundé");
+  const [newDestination, setNewDestination] = useState("Douala");
+  const [newDepartureTime, setNewDepartureTime] = useState("08:00 AM");
+  const [newBusNumber, setNewBusNumber] = useState("");
+  const [newBusName, setNewBusName] = useState("");
+  const [newBusType, setNewBusType] = useState<BusType>("vip_2x2");
+  const [newPrice, setNewPrice] = useState("6000");
+
+  const [botPhoneNumber, setBotPhoneNumber] = useState("+237 670 000 111");
+  const [botStatus, setBotStatus] = useState<"active" | "paused" | "offline">(
+    "active",
+  );
   const [welcomeMessage, setWelcomeMessage] = useState(
-    'Hello! Welcome to CAMEWEGO Booking Bot for Yaoundé Station. Reply with 1 for schedules, 2 to reserve a seat, or 3 for assistance.'
+    "Hello! Welcome to CAMEWEGO Booking Bot for Yaoundé Station. Reply with 1 for schedules, 2 to reserve a seat, or 3 for assistance.",
   );
 
   const [botRules, setBotRules] = useState<BotRule[]>([
     {
-      id: 'RULE-01',
-      keyword: '1, schedule, routes',
-      responseType: 'schedule_lookup',
-      replyTemplate: 'Today\'s departures from Yaoundé:\n- Yaoundé ➔ Douala (10:30 AM)\n- Yaoundé ➔ Bafoussam (01:00 PM)',
+      id: "RULE-01",
+      keyword: "1, schedule, routes",
+      responseType: "schedule_lookup",
+      replyTemplate:
+        "Today's departures from Yaoundé:\n- Yaoundé ➔ Douala (10:30 AM)\n- Yaoundé ➔ Bafoussam (01:00 PM)",
       isActive: true,
     },
     {
-      id: 'RULE-02',
-      keyword: '2, book, reserve',
-      responseType: 'seat_reservation',
-      replyTemplate: 'To reserve a seat, send your Full Name, preferred Destination, and Departure Time.',
+      id: "RULE-02",
+      keyword: "2, book, reserve",
+      responseType: "seat_reservation",
+      replyTemplate:
+        "To reserve a seat, send your Full Name, preferred Destination, and Departure Time.",
       isActive: true,
     },
   ]);
 
-  const [newKeyword, setNewKeyword] = useState('');
-  const [newResponseType, setNewResponseType] = useState<'auto_reply' | 'seat_reservation' | 'schedule_lookup'>('auto_reply');
-  const [newReplyTemplate, setNewReplyTemplate] = useState('');
+  const [newKeyword, setNewKeyword] = useState("");
+  const [newResponseType, setNewResponseType] = useState<
+    "auto_reply" | "seat_reservation" | "schedule_lookup"
+  >("auto_reply");
+  const [newReplyTemplate, setNewReplyTemplate] = useState("");
 
-  const [simulatedMessage, setSimulatedMessage] = useState('');
-  const [chatLog, setChatLog] = useState<{ sender: 'user' | 'bot'; text: string }[]>([
-    { sender: 'bot', text: welcomeMessage },
-  ]);
+  const [simulatedMessage, setSimulatedMessage] = useState("");
+  const [chatLog, setChatLog] = useState<
+    { sender: "user" | "bot"; text: string }[]
+  >([{ sender: "bot", text: welcomeMessage }]);
 
   const agencyClients: ClientProfile[] = [
-    { id: 'CLI-01', name: 'Paul Atanga', phone: '+237 670 112 233', companyName: 'Acapella Logistics' },
-    { id: 'CLI-02', name: 'Grace Manga', phone: '+237 699 445 566' },
-    { id: 'CLI-03', name: 'Dr. Samuel Ngu', phone: '+237 655 889 900', companyName: 'Ngu Medical Center' },
+    {
+      id: "CLI-01",
+      name: "Paul Atanga",
+      phone: "+237 670 112 233",
+      companyName: "Acapella Logistics",
+    },
+    { id: "CLI-02", name: "Grace Manga", phone: "+237 699 445 566" },
+    {
+      id: "CLI-03",
+      name: "Dr. Samuel Ngu",
+      phone: "+237 655 889 900",
+      companyName: "Ngu Medical Center",
+    },
   ];
 
-  const currentBus: RouteSchedule =
-    schedules.find((s) => s.id === selectedRoute) ||
+  const currentBus: RouteSchedule = schedules.find(
+    (s) => s.id === selectedRoute,
+  ) ||
     schedules[0] || {
-      id: '',
-      origin: '',
-      destination: '',
-      departureTime: '',
-      busNumber: '',
-      busName: 'No active route',
-      busType: 'vip_2x2',
-      busTypeName: 'Standard VIP Coach (2x2 Layout)',
+      id: "",
+      origin: "",
+      destination: "",
+      departureTime: "",
+      busNumber: "",
+      busName: "No active route",
+      busType: "vip_2x2",
+      busTypeName: "Standard VIP Coach (2x2 Layout)",
       totalSeats: 0,
       bookedSeats: 0,
       pricePerSeat: 0,
-      status: 'On Time',
+      status: "On Time",
     };
 
   const getBusDetails = (type: BusType): { name: string; capacity: number } => {
     switch (type) {
-      case 'minibus':
-        return { name: 'Express Van (19 Seats)', capacity: 19 };
-      case 'coaster':
-        return { name: 'Coaster Midibus (26 Seats)', capacity: 26 };
-      case 'ultra_vip':
-        return { name: 'Ultra-VIP Coach (2x1 Layout)', capacity: 30 };
-      case 'vip_2x2':
-        return { name: 'Standard VIP Coach (2x2 Layout)', capacity: 49 };
-      case 'classic_3x2':
-        return { name: 'High-Capacity Coach (3x2 Layout)', capacity: 61 };
+      case "minibus":
+        return { name: "Express Van (19 Seats)", capacity: 19 };
+      case "coaster":
+        return { name: "Coaster Midibus (26 Seats)", capacity: 26 };
+      case "ultra_vip":
+        return { name: "Ultra-VIP Coach (2x1 Layout)", capacity: 30 };
+      case "vip_2x2":
+        return { name: "Standard VIP Coach (2x2 Layout)", capacity: 49 };
+      case "classic_3x2":
+        return { name: "High-Capacity Coach (3x2 Layout)", capacity: 61 };
     }
   };
 
@@ -223,23 +274,25 @@ export default function InventoryPage() {
       totalSeats: busDetails.capacity,
       bookedSeats: 0,
       pricePerSeat: parseInt(newPrice) || 5000,
-      status: 'On Time',
+      status: "On Time",
     };
 
     setSchedules([newSession, ...schedules]);
     setSelectedRoute(newSession.id);
     setShowCreateSessionModal(false);
-    setNewBusNumber('');
-    setNewBusName('');
+    setNewBusNumber("");
+    setNewBusName("");
   };
 
-  const handleSelectClientOption = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleSelectClientOption = (
+    e: React.ChangeEvent<HTMLSelectElement>,
+  ) => {
     const val = e.target.value;
     setSelectedClientId(val);
 
-    if (val === 'NEW') {
-      setClientName('');
-      setClientPhone('');
+    if (val === "NEW") {
+      setClientName("");
+      setClientPhone("");
     } else {
       const found = agencyClients.find((c) => c.id === val);
       if (found) {
@@ -259,13 +312,13 @@ export default function InventoryPage() {
     if (!clientName || !selectedSeat) return;
 
     alert(
-      `Pre-Booking Reserved for Client!\n\nClient Name: ${clientName}\nPhone: ${clientPhone}\nBus Name: "${currentBus.busName}" (${currentBus.busNumber})\nSeat: #${selectedSeat}\nRoute: ${currentBus.origin} ➔ ${currentBus.destination}\nStation: ${stationAccount.stationBranch}\n\nE-Ticket dispatched via WhatsApp.`
+      `Pre-Booking Reserved for Client!\n\nClient Name: ${clientName}\nPhone: ${clientPhone}\nBus Name: "${currentBus.busName}" (${currentBus.busNumber})\nSeat: #${selectedSeat}\nRoute: ${currentBus.origin} ➔ ${currentBus.destination}\nStation: ${stationAccount.stationBranch}\n\nE-Ticket dispatched via WhatsApp.`,
     );
 
     setShowPreBookModal(false);
-    setSelectedClientId('');
-    setClientName('');
-    setClientPhone('');
+    setSelectedClientId("");
+    setClientName("");
+    setClientPhone("");
     setSelectedSeat(null);
   };
 
@@ -282,13 +335,15 @@ export default function InventoryPage() {
     };
 
     setBotRules([...botRules, newRule]);
-    setNewKeyword('');
-    setNewReplyTemplate('');
+    setNewKeyword("");
+    setNewReplyTemplate("");
   };
 
   const toggleRuleActive = (id: string) => {
     setBotRules((prev) =>
-      prev.map((rule) => (rule.id === id ? { ...rule, isActive: !rule.isActive } : rule))
+      prev.map((rule) =>
+        rule.id === id ? { ...rule, isActive: !rule.isActive } : rule,
+      ),
     );
   };
 
@@ -301,27 +356,28 @@ export default function InventoryPage() {
     if (!simulatedMessage.trim()) return;
 
     const userText = simulatedMessage.trim();
-    const newLogs = [...chatLog, { sender: 'user' as const, text: userText }];
+    const newLogs = [...chatLog, { sender: "user" as const, text: userText }];
 
     const matchedRule = botRules.find(
       (rule) =>
         rule.isActive &&
         rule.keyword
           .toLowerCase()
-          .split(',')
-          .some((k) => userText.toLowerCase().includes(k.trim()))
+          .split(",")
+          .some((k) => userText.toLowerCase().includes(k.trim())),
     );
 
-    let reply = "Sorry, I didn't quite catch that. Reply with '1' for schedules or '2' for seat booking.";
+    let reply =
+      "Sorry, I didn't quite catch that. Reply with '1' for schedules or '2' for seat booking.";
     if (matchedRule) {
       reply = matchedRule.replyTemplate;
     }
 
     setTimeout(() => {
-      setChatLog([...newLogs, { sender: 'bot', text: reply }]);
+      setChatLog([...newLogs, { sender: "bot", text: reply }]);
     }, 400);
 
-    setSimulatedMessage('');
+    setSimulatedMessage("");
   };
 
   return (
@@ -330,7 +386,6 @@ export default function InventoryPage() {
         {/* Responsive Station Branding Banner */}
         <div className="bg-emerald-900 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-lg">
           <div className="flex items-center gap-3 sm:gap-4">
-            
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] sm:text-xs font-bold text-emerald-300 uppercase tracking-widest">
@@ -340,8 +395,12 @@ export default function InventoryPage() {
                   {stationAccount.accountId}
                 </span>
               </div>
-              <h2 className="text-lg sm:text-2xl font-bold tracking-tight truncate">{stationAccount.agencyName}</h2>
-              <p className="text-xs text-emerald-200/80 mt-0.5 truncate">{stationAccount.stationBranch}</p>
+              <h2 className="text-lg sm:text-2xl font-bold tracking-tight truncate">
+                {stationAccount.agencyName}
+              </h2>
+              <p className="text-xs text-emerald-200/80 mt-0.5 truncate">
+                {stationAccount.stationBranch}
+              </p>
             </div>
           </div>
 
@@ -349,37 +408,43 @@ export default function InventoryPage() {
           <div className="flex items-center gap-1 sm:gap-2 bg-emerald-950/60 p-1 rounded-full w-full md:w-auto border border-emerald-800/50">
             <button
               type="button"
-              onClick={() => setActiveTab('inventory')}
+              onClick={() => setActiveTab("inventory")}
               className={`flex-1 md:flex-initial text-center px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-full transition-all cursor-pointer ${
-                activeTab === 'inventory'
-                  ? 'bg-emerald-400 text-emerald-950 shadow-md font-bold'
-                  : 'text-emerald-100 hover:text-white'
+                activeTab === "inventory"
+                  ? "bg-emerald-400 text-emerald-950 shadow-md font-bold"
+                  : "text-emerald-100 hover:text-white"
               }`}
             >
               Dispatch & Seats
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab('bot_creator')}
+              onClick={() => setActiveTab("bot_creator")}
               className={`flex-1 md:flex-initial text-center px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-full transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                activeTab === 'bot_creator'
-                  ? 'bg-emerald-400 text-emerald-950 shadow-md font-bold'
-                  : 'text-emerald-100 hover:text-white'
+                activeTab === "bot_creator"
+                  ? "bg-emerald-400 text-emerald-950 shadow-md font-bold"
+                  : "text-emerald-100 hover:text-white"
               }`}
             >
-              <span className="material-symbols-outlined text-base">smart_toy</span>
+              <span className="material-symbols-outlined text-base">
+                smart_toy
+              </span>
               <span>WhatsApp Bot</span>
             </button>
           </div>
         </div>
 
         {/* TAB 1: INVENTORY & SEAT RESERVATION */}
-        {activeTab === 'inventory' && (
+        {activeTab === "inventory" && (
           <>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h1 className="text-lg sm:text-xl font-bold text-[#1a1c1c]">Active Travel Sessions</h1>
-                <p className="text-xs text-[#7e7576]">Select a scheduled bus or launch a new session.</p>
+                <h1 className="text-lg sm:text-xl font-bold text-[#1a1c1c]">
+                  Active Travel Sessions
+                </h1>
+                <p className="text-xs text-[#7e7576]">
+                  Select a scheduled bus or launch a new session.
+                </p>
               </div>
 
               <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
@@ -388,7 +453,9 @@ export default function InventoryPage() {
                   onClick={() => setShowCreateSessionModal(true)}
                   className="flex-1 sm:flex-initial bg-emerald-600 text-white text-xs sm:text-sm font-semibold px-3.5 sm:px-4 py-2.5 rounded-full hover:bg-emerald-700 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
                 >
-                  <span className="material-symbols-outlined text-base">add_circle</span>
+                  <span className="material-symbols-outlined text-base">
+                    add_circle
+                  </span>
                   <span>New Session</span>
                 </button>
 
@@ -397,7 +464,9 @@ export default function InventoryPage() {
                   onClick={() => setShowPreBookModal(true)}
                   className="flex-1 sm:flex-initial bg-black text-white text-xs sm:text-sm font-semibold px-3.5 sm:px-4 py-2.5 rounded-full hover:scale-[1.02] active:scale-95 transition-transform flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
                 >
-                  <span className="material-symbols-outlined text-base">person_add</span>
+                  <span className="material-symbols-outlined text-base">
+                    person_add
+                  </span>
                   <span>Book Client</span>
                 </button>
               </div>
@@ -424,18 +493,24 @@ export default function InventoryPage() {
                       onClick={() => setSelectedRoute(item.id)}
                       className={`backdrop-blur-xl border rounded-2xl sm:rounded-3xl p-4 sm:p-5 cursor-pointer transition-all ${
                         isSelected
-                          ? 'bg-black text-white border-black shadow-lg scale-[1.01]'
-                          : 'bg-white border-slate-200/80 hover:bg-slate-50 text-[#1a1c1c]'
+                          ? "bg-black text-white border-black shadow-lg scale-[1.01]"
+                          : "bg-white border-slate-200/80 hover:bg-slate-50 text-[#1a1c1c]"
                       }`}
                     >
                       <div className="flex justify-between items-start mb-2 gap-2">
                         <div className="min-w-0">
-                          <span className="text-[9px] uppercase font-bold text-emerald-500 tracking-wider">Bus Name</span>
-                          <h4 className={`text-sm sm:text-base font-extrabold truncate ${isSelected ? 'text-emerald-400' : 'text-[#1a1c1c]'}`}>
+                          <span className="text-[9px] uppercase font-bold text-emerald-500 tracking-wider">
+                            Bus Name
+                          </span>
+                          <h4
+                            className={`text-sm sm:text-base font-extrabold truncate ${isSelected ? "text-emerald-400" : "text-[#1a1c1c]"}`}
+                          >
                             "{item.busName}"
                           </h4>
                         </div>
-                        <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-black/5 text-[#4c4546]'}`}>
+                        <span
+                          className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${isSelected ? "bg-white/20 text-white" : "bg-black/5 text-[#4c4546]"}`}
+                        >
                           {item.busNumber}
                         </span>
                       </div>
@@ -443,18 +518,29 @@ export default function InventoryPage() {
                       <div className="mb-3 pt-1 border-t border-gray-100/10">
                         <h3 className="text-sm sm:text-base font-bold flex items-center gap-1">
                           <span>{item.origin}</span>
-                          <span className="material-symbols-outlined text-xs">arrow_forward</span>
+                          <span className="material-symbols-outlined text-xs">
+                            arrow_forward
+                          </span>
                           <span>{item.destination}</span>
                         </h3>
                         <div className="flex justify-between items-center mt-1">
-                          <p className={`text-xs ${isSelected ? 'text-gray-300' : 'text-[#7e7576]'}`}>
-                            Dep: <span className="font-semibold">{item.departureTime}</span>
+                          <p
+                            className={`text-xs ${isSelected ? "text-gray-300" : "text-[#7e7576]"}`}
+                          >
+                            Dep:{" "}
+                            <span className="font-semibold">
+                              {item.departureTime}
+                            </span>
                           </p>
-                          <span className={`text-xs font-bold ${isSelected ? 'text-emerald-400' : 'text-emerald-700'}`}>
+                          <span
+                            className={`text-xs font-bold ${isSelected ? "text-emerald-400" : "text-emerald-700"}`}
+                          >
                             {item.pricePerSeat} FCFA
                           </span>
                         </div>
-                        <span className={`inline-block text-[10px] font-semibold mt-2 px-2 py-0.5 rounded truncate max-w-full ${isSelected ? 'bg-white/10 text-emerald-300' : 'bg-emerald-50 text-emerald-800'}`}>
+                        <span
+                          className={`inline-block text-[10px] font-semibold mt-2 px-2 py-0.5 rounded truncate max-w-full ${isSelected ? "bg-white/10 text-emerald-300" : "bg-emerald-50 text-emerald-800"}`}
+                        >
                           {item.busTypeName}
                         </span>
                       </div>
@@ -462,12 +548,18 @@ export default function InventoryPage() {
                       <div className="space-y-1.5">
                         <div className="flex justify-between text-[11px] font-medium">
                           <span>{available} left</span>
-                          <span>{item.bookedSeats}/{item.totalSeats} Booked</span>
+                          <span>
+                            {item.bookedSeats}/{item.totalSeats} Booked
+                          </span>
                         </div>
-                        <div className={`w-full h-1.5 sm:h-2 rounded-full overflow-hidden ${isSelected ? 'bg-white/20' : 'bg-gray-200'}`}>
+                        <div
+                          className={`w-full h-1.5 sm:h-2 rounded-full overflow-hidden ${isSelected ? "bg-white/20" : "bg-gray-200"}`}
+                        >
                           <div
-                            className={`h-full ${isSelected ? 'bg-emerald-400' : 'bg-black'}`}
-                            style={{ width: `${item.totalSeats ? (item.bookedSeats / item.totalSeats) * 100 : 0}%` }}
+                            className={`h-full ${isSelected ? "bg-emerald-400" : "bg-black"}`}
+                            style={{
+                              width: `${item.totalSeats ? (item.bookedSeats / item.totalSeats) * 100 : 0}%`,
+                            }}
                           />
                         </div>
                       </div>
@@ -483,10 +575,13 @@ export default function InventoryPage() {
                 <div>
                   <h2 className="text-base sm:text-lg font-bold text-[#1a1c1c] flex items-center gap-2 flex-wrap">
                     <span>"{currentBus.busName}"</span>
-                    <span className="text-xs font-normal text-gray-500">({currentBus.busNumber})</span>
+                    <span className="text-xs font-normal text-gray-500">
+                      ({currentBus.busNumber})
+                    </span>
                   </h2>
                   <p className="text-xs text-[#7e7576]">
-                    {currentBus.origin} ➔ {currentBus.destination} • {currentBus.busTypeName} ({currentBus.totalSeats} Capacity)
+                    {currentBus.origin} ➔ {currentBus.destination} •{" "}
+                    {currentBus.busTypeName} ({currentBus.totalSeats} Capacity)
                   </p>
                 </div>
 
@@ -507,7 +602,8 @@ export default function InventoryPage() {
                 <div className="min-w-[280px] sm:min-w-[340px] px-2">
                   <BusSeatLayout
                     busType={currentBus.busType}
-                    bookedSeatsCount={currentBus.bookedSeats}
+                    totalSeats={currentBus.totalSeats}
+                    bookedSeatNumbers={currentBookedSeatNumbers}
                     onSeatClick={handleSeatClick}
                   />
                 </div>
@@ -517,7 +613,7 @@ export default function InventoryPage() {
         )}
 
         {/* TAB 2: WHATSAPP BOT CREATOR */}
-        {activeTab === 'bot_creator' && (
+        {activeTab === "bot_creator" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
             <div className="lg:col-span-2 space-y-4 sm:space-y-6">
               <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
@@ -529,25 +625,31 @@ export default function InventoryPage() {
                         {botStatus.toUpperCase()}
                       </span>
                     </h2>
-                    <p className="text-xs text-[#7e7576]">Auto-responder instance for this station</p>
+                    <p className="text-xs text-[#7e7576]">
+                      Auto-responder instance for this station
+                    </p>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => setBotStatus(botStatus === 'active' ? 'paused' : 'active')}
+                    onClick={() =>
+                      setBotStatus(botStatus === "active" ? "paused" : "active")
+                    }
                     className={`self-start sm:self-auto text-xs font-bold px-3.5 py-1.5 rounded-full cursor-pointer transition-colors ${
-                      botStatus === 'active'
-                        ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      botStatus === "active"
+                        ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                        : "bg-emerald-600 text-white hover:bg-emerald-700"
                     }`}
                   >
-                    {botStatus === 'active' ? 'Pause Bot' : 'Activate Bot'}
+                    {botStatus === "active" ? "Pause Bot" : "Activate Bot"}
                   </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-1">
                   <div>
-                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Bot Phone / ID</label>
+                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                      Bot Phone / ID
+                    </label>
                     <input
                       type="text"
                       value={botPhoneNumber}
@@ -556,7 +658,9 @@ export default function InventoryPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Connected Gateway</label>
+                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                      Connected Gateway
+                    </label>
                     <div className="w-full mt-1 bg-gray-100 text-xs sm:text-sm font-semibold rounded-xl px-3.5 py-2 text-[#1a1c1c] flex items-center justify-between">
                       <span>Meta Cloud API</span>
                       <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -565,7 +669,9 @@ export default function InventoryPage() {
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Welcome Greeting</label>
+                  <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                    Welcome Greeting
+                  </label>
                   <textarea
                     rows={2}
                     value={welcomeMessage}
@@ -576,16 +682,23 @@ export default function InventoryPage() {
               </div>
 
               <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm space-y-4 sm:space-y-6">
-                <h3 className="text-sm sm:text-base font-bold text-[#1a1c1c]">Response Flow Rules</h3>
+                <h3 className="text-sm sm:text-base font-bold text-[#1a1c1c]">
+                  Response Flow Rules
+                </h3>
 
-                <form onSubmit={handleAddRule} className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 sm:p-4 space-y-3">
+                <form
+                  onSubmit={handleAddRule}
+                  className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 sm:p-4 space-y-3"
+                >
                   <div className="text-xs font-bold text-[#1a1c1c] uppercase tracking-wider">
                     + Add Trigger Rule
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] font-semibold text-[#7e7576]">Trigger Keywords</label>
+                      <label className="text-[11px] font-semibold text-[#7e7576]">
+                        Trigger Keywords
+                      </label>
                       <input
                         type="text"
                         placeholder="e.g. price, cost"
@@ -595,21 +708,31 @@ export default function InventoryPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-semibold text-[#7e7576]">Action Type</label>
+                      <label className="text-[11px] font-semibold text-[#7e7576]">
+                        Action Type
+                      </label>
                       <select
                         value={newResponseType}
-                        onChange={(e) => setNewResponseType(e.target.value as any)}
+                        onChange={(e) =>
+                          setNewResponseType(e.target.value as any)
+                        }
                         className="w-full mt-1 bg-white border border-slate-200 text-xs sm:text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-black outline-none font-medium"
                       >
                         <option value="auto_reply">Static Auto-Reply</option>
-                        <option value="schedule_lookup">Live Schedule Lookup</option>
-                        <option value="seat_reservation">Trigger Seat Reservation Flow</option>
+                        <option value="schedule_lookup">
+                          Live Schedule Lookup
+                        </option>
+                        <option value="seat_reservation">
+                          Trigger Seat Reservation Flow
+                        </option>
                       </select>
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-semibold text-[#7e7576]">Message Body</label>
+                    <label className="text-[11px] font-semibold text-[#7e7576]">
+                      Message Body
+                    </label>
                     <textarea
                       rows={2}
                       placeholder="Response template..."
@@ -628,7 +751,9 @@ export default function InventoryPage() {
                 </form>
 
                 <div className="space-y-2.5">
-                  <div className="text-xs font-bold text-[#7e7576] uppercase">Rules ({botRules.length})</div>
+                  <div className="text-xs font-bold text-[#7e7576] uppercase">
+                    Rules ({botRules.length})
+                  </div>
                   {botRules.map((rule) => (
                     <div
                       key={rule.id}
@@ -640,7 +765,7 @@ export default function InventoryPage() {
                             {rule.keyword}
                           </span>
                           <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                            {rule.responseType.replace('_', ' ').toUpperCase()}
+                            {rule.responseType.replace("_", " ").toUpperCase()}
                           </span>
                         </div>
                         <p className="text-xs text-[#4c4546] font-medium whitespace-pre-line pt-1">
@@ -653,17 +778,21 @@ export default function InventoryPage() {
                           type="button"
                           onClick={() => toggleRuleActive(rule.id)}
                           className={`text-xs font-bold px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
-                            rule.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'
+                            rule.isActive
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-gray-200 text-gray-600"
                           }`}
                         >
-                          {rule.isActive ? 'Active' : 'Disabled'}
+                          {rule.isActive ? "Active" : "Disabled"}
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteRule(rule.id)}
                           className="text-gray-400 hover:text-red-600 cursor-pointer transition-colors p-1"
                         >
-                          <span className="material-symbols-outlined text-base">delete</span>
+                          <span className="material-symbols-outlined text-base">
+                            delete
+                          </span>
                         </button>
                       </div>
                     </div>
@@ -681,13 +810,19 @@ export default function InventoryPage() {
                       WA
                     </div>
                     <div>
-                      <h3 className="text-xs sm:text-sm font-bold text-[#1a1c1c]">Bot Simulator</h3>
-                      <p className="text-[9px] sm:text-[10px] text-emerald-600 font-semibold">Live Preview</p>
+                      <h3 className="text-xs sm:text-sm font-bold text-[#1a1c1c]">
+                        Bot Simulator
+                      </h3>
+                      <p className="text-[9px] sm:text-[10px] text-emerald-600 font-semibold">
+                        Live Preview
+                      </p>
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setChatLog([{ sender: 'bot', text: welcomeMessage }])}
+                    onClick={() =>
+                      setChatLog([{ sender: "bot", text: welcomeMessage }])
+                    }
                     className="text-xs text-[#7e7576] hover:text-black font-medium cursor-pointer"
                   >
                     Reset
@@ -698,13 +833,13 @@ export default function InventoryPage() {
                   {chatLog.map((chat, idx) => (
                     <div
                       key={idx}
-                      className={`flex ${chat.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                      className={`flex ${chat.sender === "user" ? "justify-end" : "justify-start"}`}
                     >
                       <div
                         className={`max-w-[85%] rounded-2xl p-2.5 sm:p-3 text-xs leading-relaxed ${
-                          chat.sender === 'user'
-                            ? 'bg-emerald-700 text-white rounded-br-none shadow-sm'
-                            : 'bg-slate-100 text-[#1a1c1c] rounded-bl-none shadow-sm whitespace-pre-line'
+                          chat.sender === "user"
+                            ? "bg-emerald-700 text-white rounded-br-none shadow-sm"
+                            : "bg-slate-100 text-[#1a1c1c] rounded-bl-none shadow-sm whitespace-pre-line"
                         }`}
                       >
                         {chat.text}
@@ -714,7 +849,10 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              <form onSubmit={handleSendSimulatedMessage} className="mt-3 flex gap-2 pt-2 border-t border-gray-100">
+              <form
+                onSubmit={handleSendSimulatedMessage}
+                className="mt-3 flex gap-2 pt-2 border-t border-gray-100"
+              >
                 <input
                   type="text"
                   placeholder="Type a test msg..."
@@ -739,8 +877,12 @@ export default function InventoryPage() {
             <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 max-w-lg w-full shadow-2xl space-y-4 border border-white max-h-[92vh] overflow-y-auto">
               <div className="flex justify-between items-center border-b border-gray-100 pb-3">
                 <div>
-                  <h3 className="text-base font-bold text-[#1a1c1c]">Create Travel Session</h3>
-                  <p className="text-xs text-gray-500">{stationAccount.stationBranch}</p>
+                  <h3 className="text-base font-bold text-[#1a1c1c]">
+                    Create Travel Session
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    {stationAccount.stationBranch}
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -754,7 +896,9 @@ export default function InventoryPage() {
               <form onSubmit={handleCreateSession} className="space-y-3.5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Origin</label>
+                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                      Origin
+                    </label>
                     <select
                       value={newOrigin}
                       onChange={(e) => setNewOrigin(e.target.value)}
@@ -770,7 +914,9 @@ export default function InventoryPage() {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Destination</label>
+                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                      Destination
+                    </label>
                     <select
                       value={newDestination}
                       onChange={(e) => setNewDestination(e.target.value)}
@@ -789,7 +935,9 @@ export default function InventoryPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Departure Time</label>
+                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                      Departure Time
+                    </label>
                     <input
                       type="text"
                       required
@@ -801,7 +949,9 @@ export default function InventoryPage() {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Price (FCFA)</label>
+                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                      Price (FCFA)
+                    </label>
                     <input
                       type="number"
                       required
@@ -813,10 +963,14 @@ export default function InventoryPage() {
                 </div>
 
                 <div className="p-3.5 bg-emerald-50/60 rounded-2xl border border-emerald-100 space-y-3">
-                  <div className="text-xs font-bold text-emerald-900 uppercase">Bus & Layout Details</div>
+                  <div className="text-xs font-bold text-emerald-900 uppercase">
+                    Bus & Layout Details
+                  </div>
 
                   <div>
-                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Bus Name</label>
+                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                      Bus Name
+                    </label>
                     <input
                       type="text"
                       required
@@ -829,7 +983,9 @@ export default function InventoryPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Registration No.</label>
+                      <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                        Registration No.
+                      </label>
                       <input
                         type="text"
                         required
@@ -841,17 +997,29 @@ export default function InventoryPage() {
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Layout Type</label>
+                      <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                        Layout Type
+                      </label>
                       <select
                         value={newBusType}
-                        onChange={(e) => setNewBusType(e.target.value as BusType)}
+                        onChange={(e) =>
+                          setNewBusType(e.target.value as BusType)
+                        }
                         className="w-full mt-1 bg-white border border-slate-200 text-xs rounded-xl px-2.5 py-2 focus:ring-2 focus:ring-black outline-none font-medium"
                       >
-                        <option value="vip_2x2">VIP Coach (2x2 • 49 Seats)</option>
+                        <option value="vip_2x2">
+                          VIP Coach (2x2 • 49 Seats)
+                        </option>
                         <option value="minibus">Express Van (19 Seats)</option>
-                        <option value="coaster">Coaster Midibus (26 Seats)</option>
-                        <option value="ultra_vip">Ultra-VIP Coach (2x1 • 30 Seats)</option>
-                        <option value="classic_3x2">High-Capacity Coach (3x2 • 61 Seats)</option>
+                        <option value="coaster">
+                          Coaster Midibus (26 Seats)
+                        </option>
+                        <option value="ultra_vip">
+                          Ultra-VIP Coach (2x1 • 30 Seats)
+                        </option>
+                        <option value="classic_3x2">
+                          High-Capacity Coach (3x2 • 61 Seats)
+                        </option>
                       </select>
                     </div>
                   </div>
@@ -873,8 +1041,12 @@ export default function InventoryPage() {
             <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl space-y-4 border border-white">
               <div className="flex justify-between items-center border-b border-gray-100 pb-3">
                 <div>
-                  <h3 className="text-base font-bold text-[#1a1c1c]">Assign Pre-Booking</h3>
-                  <p className="text-xs text-emerald-700 font-medium">"{currentBus.busName}"</p>
+                  <h3 className="text-base font-bold text-[#1a1c1c]">
+                    Assign Pre-Booking
+                  </h3>
+                  <p className="text-xs text-emerald-700 font-medium">
+                    "{currentBus.busName}"
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -887,7 +1059,9 @@ export default function InventoryPage() {
 
               <form onSubmit={handleConfirmBooking} className="space-y-3.5">
                 <div>
-                  <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Select Client</label>
+                  <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                    Select Client
+                  </label>
                   <select
                     value={selectedClientId}
                     onChange={handleSelectClientOption}
@@ -896,7 +1070,9 @@ export default function InventoryPage() {
                     <option value="">-- Choose Existing Client --</option>
                     {agencyClients.map((client) => (
                       <option key={client.id} value={client.id}>
-                        {client.name} {client.companyName ? `(${client.companyName})` : ''} — {client.phone}
+                        {client.name}{" "}
+                        {client.companyName ? `(${client.companyName})` : ""} —{" "}
+                        {client.phone}
                       </option>
                     ))}
                     <option value="NEW">+ Register New Profile</option>
@@ -904,7 +1080,9 @@ export default function InventoryPage() {
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Full Name</label>
+                  <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                    Full Name
+                  </label>
                   <input
                     type="text"
                     required
@@ -916,7 +1094,9 @@ export default function InventoryPage() {
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Phone Number</label>
+                  <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                    Phone Number
+                  </label>
                   <input
                     type="tel"
                     required
@@ -929,16 +1109,22 @@ export default function InventoryPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Seat</label>
+                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                      Seat
+                    </label>
                     <input
                       type="text"
                       readOnly
-                      value={selectedSeat ? `Seat #${selectedSeat}` : 'Auto-Assign'}
+                      value={
+                        selectedSeat ? `Seat #${selectedSeat}` : "Auto-Assign"
+                      }
                       className="w-full mt-1 bg-gray-100 text-xs sm:text-sm font-bold rounded-xl px-3 py-2 text-[#1a1c1c]"
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">Fare</label>
+                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
+                      Fare
+                    </label>
                     <input
                       type="text"
                       readOnly
@@ -969,14 +1155,22 @@ export default function InventoryPage() {
 
 interface BusSeatLayoutProps {
   busType: BusType;
-  bookedSeatsCount: number;
+  totalSeats: number;
+  bookedSeatNumbers: number[];
   onSeatClick: (seatNum: number) => void;
 }
 
-function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayoutProps) {
+function BusSeatLayout({
+  busType,
+  totalSeats,
+  bookedSeatNumbers,
+  onSeatClick,
+}: BusSeatLayoutProps) {
   // Flexible seat sizing button designed for mobile tap targets
   const renderSeatBtn = (seatNum: number) => {
-    const isBooked = seatNum <= bookedSeatsCount;
+    if (seatNum > totalSeats) return null;
+
+    const isBooked = bookedSeatNumbers.includes(seatNum);
     return (
       <button
         key={seatNum}
@@ -985,8 +1179,8 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
         onClick={() => onSeatClick(seatNum)}
         className={`w-9 h-9 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-bold transition-transform flex items-center justify-center shrink-0 ${
           isBooked
-            ? 'bg-gray-200 text-gray-500 cursor-not-allowed border border-gray-300'
-            : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-500 hover:text-white active:scale-95 cursor-pointer border border-emerald-300 shadow-sm'
+            ? "bg-gray-200 text-gray-500 cursor-not-allowed border border-gray-300"
+            : "bg-emerald-50 text-emerald-800 hover:bg-emerald-500 hover:text-white active:scale-95 cursor-pointer border border-emerald-300 shadow-sm"
         }`}
       >
         S{seatNum < 10 ? `0${seatNum}` : seatNum}
@@ -994,10 +1188,16 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
     );
   };
 
-  const FrontCabinHeader = ({ hasFrontPassenger = false }: { hasFrontPassenger?: boolean }) => (
+  const FrontCabinHeader = ({
+    hasFrontPassenger = false,
+  }: {
+    hasFrontPassenger?: boolean;
+  }) => (
     <div className="flex justify-between items-center bg-slate-100/90 rounded-xl p-2.5 sm:p-3 border border-slate-200 text-[11px] sm:text-xs font-bold text-gray-600 mb-2">
       <div className="flex items-center gap-1 bg-slate-200 px-2.5 py-1 rounded-lg text-gray-700">
-        <span className="material-symbols-outlined text-sm">sports_motorsports</span>
+        <span className="material-symbols-outlined text-sm">
+          sports_motorsports
+        </span>
         <span>Driver</span>
       </div>
       {hasFrontPassenger ? (
@@ -1006,7 +1206,9 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
         </div>
       ) : (
         <div className="bg-emerald-50 text-emerald-700 border border-emerald-300/60 px-2.5 py-1 rounded-lg flex items-center gap-1">
-          <span className="material-symbols-outlined text-sm">meeting_room</span>
+          <span className="material-symbols-outlined text-sm">
+            meeting_room
+          </span>
           <span>Door</span>
         </div>
       )}
@@ -1020,7 +1222,7 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
     </div>
   );
 
-  if (busType === 'minibus') {
+  if (busType === "minibus") {
     return (
       <div className="w-full max-w-xs sm:max-w-sm flex flex-col gap-2.5">
         <FrontCabinHeader hasFrontPassenger={true} />
@@ -1034,7 +1236,9 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
           ].map(([sLeft, sMid, sRight], idx) => (
             <div key={idx} className="flex items-center justify-between">
               {renderSeatBtn(sLeft)}
-              <div className="text-[9px] font-bold text-gray-400 px-1">AISLE</div>
+              <div className="text-[9px] font-bold text-gray-400 px-1">
+                AISLE
+              </div>
               <div className="flex gap-1.5">
                 {renderSeatBtn(sMid)}
                 {renderSeatBtn(sRight)}
@@ -1042,7 +1246,9 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
             </div>
           ))}
           <div className="pt-2 border-t border-slate-200">
-            <div className="text-[9px] font-bold text-center text-gray-400 mb-1 uppercase">Back Bench</div>
+            <div className="text-[9px] font-bold text-center text-gray-400 mb-1 uppercase">
+              Back Bench
+            </div>
             <div className="flex justify-between gap-1">
               {renderSeatBtn(16)}
               {renderSeatBtn(17)}
@@ -1055,7 +1261,7 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
     );
   }
 
-  if (busType === 'coaster') {
+  if (busType === "coaster") {
     return (
       <div className="w-full max-w-xs sm:max-w-sm flex flex-col gap-2.5">
         <FrontCabinHeader />
@@ -1074,12 +1280,16 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
                 {renderSeatBtn(sLeft1)}
                 {renderSeatBtn(sLeft2)}
               </div>
-              <div className="text-[9px] font-bold text-gray-300 px-1">AISLE</div>
+              <div className="text-[9px] font-bold text-gray-300 px-1">
+                AISLE
+              </div>
               <div>{renderSeatBtn(sRight)}</div>
             </div>
           ))}
           <div className="pt-2 border-t border-slate-200">
-            <div className="text-[9px] font-bold text-center text-gray-400 mb-1 uppercase">Back Row</div>
+            <div className="text-[9px] font-bold text-center text-gray-400 mb-1 uppercase">
+              Back Row
+            </div>
             <div className="flex justify-between gap-1">
               {renderSeatBtn(22)}
               {renderSeatBtn(23)}
@@ -1093,7 +1303,7 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
     );
   }
 
-  if (busType === 'ultra_vip') {
+  if (busType === "ultra_vip") {
     return (
       <div className="w-full max-w-xs sm:max-w-sm flex flex-col gap-2.5">
         <FrontCabinHeader />
@@ -1111,7 +1321,9 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
                 {renderSeatBtn(sLeft1)}
                 {renderSeatBtn(sLeft2)}
               </div>
-              <div className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">AISLE</div>
+              <div className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                AISLE
+              </div>
               <div>{renderSeatBtn(sRight)}</div>
             </div>
           ))}
@@ -1129,7 +1341,9 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
                 {renderSeatBtn(sLeft1)}
                 {renderSeatBtn(sLeft2)}
               </div>
-              <div className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">AISLE</div>
+              <div className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                AISLE
+              </div>
               <div>{renderSeatBtn(sRight)}</div>
             </div>
           ))}
@@ -1138,7 +1352,7 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
     );
   }
 
-  if (busType === 'vip_2x2') {
+  if (busType === "vip_2x2") {
     return (
       <div className="w-full max-w-sm sm:max-w-md flex flex-col gap-2.5">
         <FrontCabinHeader />
@@ -1155,7 +1369,9 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
                 {renderSeatBtn(sl1)}
                 {renderSeatBtn(sl2)}
               </div>
-              <div className="text-[9px] font-bold text-gray-300 px-1">AISLE</div>
+              <div className="text-[9px] font-bold text-gray-300 px-1">
+                AISLE
+              </div>
               <div className="flex gap-1.5">
                 {renderSeatBtn(sr1)}
                 {renderSeatBtn(sr2)}
@@ -1178,7 +1394,9 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
                 {renderSeatBtn(sl1)}
                 {renderSeatBtn(sl2)}
               </div>
-              <div className="text-[9px] font-bold text-gray-300 px-1">AISLE</div>
+              <div className="text-[9px] font-bold text-gray-300 px-1">
+                AISLE
+              </div>
               <div className="flex gap-1.5">
                 {renderSeatBtn(sr1)}
                 {renderSeatBtn(sr2)}
@@ -1187,7 +1405,9 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
           ))}
 
           <div className="pt-2 border-t border-slate-200">
-            <div className="text-[9px] font-bold text-center text-gray-400 mb-1 uppercase">Back Row</div>
+            <div className="text-[9px] font-bold text-center text-gray-400 mb-1 uppercase">
+              Back Row
+            </div>
             <div className="flex justify-between gap-1">
               {renderSeatBtn(45)}
               {renderSeatBtn(46)}
@@ -1251,7 +1471,9 @@ function BusSeatLayout({ busType, bookedSeatsCount, onSeatClick }: BusSeatLayout
         ))}
 
         <div className="pt-2 border-t border-slate-200">
-          <div className="text-[9px] font-bold text-center text-gray-400 mb-1 uppercase">6-Seat Back Row</div>
+          <div className="text-[9px] font-bold text-center text-gray-400 mb-1 uppercase">
+            6-Seat Back Row
+          </div>
           <div className="flex justify-between gap-0.5 sm:gap-1">
             {renderSeatBtn(56)}
             {renderSeatBtn(57)}

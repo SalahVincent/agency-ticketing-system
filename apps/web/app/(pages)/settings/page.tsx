@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
+import { UserProfile } from '@clerk/nextjs';
+import { clerkAppearance } from '@/lib/clerk-appearance';
 
 export default function SettingsPage() {
   const [agencyName, setAgencyName] = useState('CamEWeGo Travel & Express');
@@ -96,6 +98,14 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
+          </section>
+
+          <section className="bg-white/60 backdrop-blur-xl rounded-3xl p-6 sm:p-8 border border-white/80 shadow-[0_20px_50px_rgba(0,0,0,0.03)] space-y-6">
+            <div className="border-b border-[#cfc4c5]/30 pb-4">
+              <h2 className="text-lg font-bold text-[#1a1c1c]">Account &amp; security</h2>
+              <p className="text-xs text-[#7e7576]">Manage your email, password, and connected accounts.</p>
+            </div>
+            <UserProfile routing="hash" appearance={clerkAppearance} />
           </section>
 
         </div>

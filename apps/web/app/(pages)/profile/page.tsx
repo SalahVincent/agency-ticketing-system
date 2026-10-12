@@ -1,9 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 
 export default function ProfilePage() {
+  const { user } = useUser();
+  const { signOut } = useClerk();
   const [isOnDuty, setIsOnDuty] = useState(true);
 
   // Mock Agency & Agent Data
@@ -30,6 +33,19 @@ export default function ProfilePage() {
   };
 
   const { agent } = agencyData;
+  const clerkName = user?.fullName || [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Agent';
+  const clerkInitials = clerkName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+  const clerkEmail = user?.primaryEmailAddress?.emailAddress || 'Not provided';
+  const clerkPhone = user?.primaryPhoneNumber?.phoneNumber || 'Not provided';
+  const memberSince = user?.createdAt
+    ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : '—';
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -45,7 +61,7 @@ export default function ProfilePage() {
           {/* Avatar Container */}
           <div className="relative">
             <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-black text-white flex items-center justify-center text-3xl font-extrabold shadow-lg border-4 border-white">
-              VT
+              {clerkInitials}
             </div>
             {/* Duty Status Dot Indicator */}
             <span 
@@ -67,7 +83,7 @@ export default function ProfilePage() {
                 </div>
 
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1a1c1c] tracking-tight">
-                  {agent.name}
+                  {clerkName}
                 </h1>
                 <p className="text-sm font-semibold text-[#7e7576]">
                   {agent.role}
@@ -166,11 +182,11 @@ export default function ProfilePage() {
           <div className="space-y-3 text-sm pb-2">
             <div className="flex items-center justify-between py-2 border-b border-[#cfc4c5]/20">
               <span className="text-[#7e7576] font-medium">Email Address</span>
-              <span className="font-semibold text-[#1a1c1c]">{agent.email}</span>
+              <span className="font-semibold text-[#1a1c1c]">{clerkEmail}</span>
             </div>
             <div className="flex items-center justify-between py-2 border-b border-[#cfc4c5]/20">
               <span className="text-[#7e7576] font-medium">Phone Number</span>
-              <span className="font-semibold text-[#1a1c1c]">{agent.phone}</span>
+              <span className="font-semibold text-[#1a1c1c]">{clerkPhone}</span>
             </div>
             <div className="flex items-center justify-between py-2 border-b border-[#cfc4c5]/20">
               <span className="text-[#7e7576] font-medium">Assigned Terminal</span>
@@ -178,7 +194,7 @@ export default function ProfilePage() {
             </div>
             <div className="flex items-center justify-between py-2">
               <span className="text-[#7e7576] font-medium">Member Since</span>
-              <span className="font-semibold text-[#1a1c1c]">{agent.joinedDate}</span>
+              <span className="font-semibold text-[#1a1c1c]">{memberSince}</span>
             </div>
           </div>
 
@@ -195,6 +211,16 @@ export default function ProfilePage() {
                 arrow_forward
               </span>
             </Link>
+            <button
+              type="button"
+              onClick={() => signOut({ redirectUrl: '/login' })}
+              className="flex w-full items-center justify-between p-3 bg-red-50 text-red-700 hover:bg-red-100 rounded-2xl transition-all group text-sm font-semibold"
+            >
+              <span className="flex items-center gap-2.5">
+                <span className="material-symbols-outlined text-[20px]">logout</span>
+                Sign Out
+              </span>
+            </button>
           </div>
         </div>
 

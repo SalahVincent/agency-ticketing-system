@@ -1,12 +1,18 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 export default function Navbar() {
+  const { user } = useUser();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const profileInitials = [user?.firstName?.[0], user?.lastName?.[0]]
+    .filter(Boolean)
+    .join('')
+    .toUpperCase() || user?.primaryEmailAddress?.emailAddress.slice(0, 2).toUpperCase() || 'P';
 
   // Hide the floating scanner button if the user is already on the scanner page
   const isScannerPage = pathname === '/scanner';
@@ -112,7 +118,7 @@ export default function Navbar() {
               }`}
             >
               <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center text-xs font-bold">
-                <span className="material-symbols-outlined text-[18px]">person</span>
+                {user ? profileInitials : <span className="material-symbols-outlined text-[18px]">person</span>}
               </div>
               <span className="text-xs font-bold">
                 Profile

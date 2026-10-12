@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import jsQR from 'jsqr';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
@@ -61,6 +62,7 @@ const formatTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
 export default function QRScannerPage() {
+  const { getToken } = useAuth();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isVerifyingRef = useRef<boolean>(false);
@@ -129,9 +131,15 @@ export default function QRScannerPage() {
     const timer = setTimeout(() => controller.abort(), 8000);
 
     try {
+      const token = await getToken();
+      if (!token) throw new Error('Authentication required');
+
       const res = await fetch(`${API_URL}/scanner/validate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ code: payload }),
         signal: controller.signal,
       });
@@ -149,7 +157,7 @@ export default function QRScannerPage() {
       clearTimeout(timer);
       setIsVerifying(false);
     }
-  }, []);
+  }, [getToken]);
 
   // Frame processing loop for QR code detection
   useEffect(() => {

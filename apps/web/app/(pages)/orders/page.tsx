@@ -1,7 +1,8 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { fetchApi } from '@/lib/api';
+import React, { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { fetchApi } from "@/lib/api";
 
 interface TravelOrder {
   id: string;
@@ -12,7 +13,7 @@ interface TravelOrder {
   travelDate: string;
   seatNo: string;
   amount: number;
-  status: 'Confirmed' | 'Boarded' | 'Cancelled';
+  status: "Confirmed" | "Boarded" | "Cancelled";
 }
 
 interface ApiOrder {
@@ -24,35 +25,41 @@ interface ApiOrder {
   travelDate: string;
   seatNo: string;
   amount: number;
-  status: 'Confirmed' | 'Boarded' | 'Cancelled';
+  status: "Confirmed" | "Boarded" | "Cancelled";
 }
 
 export default function OrdersPage() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<'All' | 'Confirmed' | 'Boarded' | 'Cancelled'>('All');
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedFilter, setSelectedFilter] = useState<
+    "All" | "Confirmed" | "Boarded" | "Cancelled"
+  >("All");
   const [selectedOrder, setSelectedOrder] = useState<TravelOrder | null>(null);
   const [orders, setOrders] = useState<TravelOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+
     const loadOrders = async () => {
       try {
-        const data = await fetchApi<ApiOrder[]>('/orders');
+        const data = await fetchApi<ApiOrder[]>("/orders", getToken);
         setOrders(data);
       } catch (err) {
-        console.error('Failed to load orders', err);
-        setError('Could not load passenger bookings right now.');
+        console.error("Failed to load orders", err);
+        setError("Could not load passenger bookings right now.");
       } finally {
         setIsLoading(false);
       }
     };
 
     loadOrders();
-  }, []);
+  }, [getToken, isLoaded, isSignedIn]);
 
   const filteredOrders = orders.filter((order) => {
-    const matchesFilter = selectedFilter === 'All' || order.status === selectedFilter;
+    const matchesFilter =
+      selectedFilter === "All" || order.status === selectedFilter;
     const searchValue = searchQuery.trim().toLowerCase();
     const matchesSearch =
       searchValue.length === 0 ||
@@ -73,14 +80,17 @@ export default function OrdersPage() {
             Passenger Bookings & Orders
           </h1>
           <p className="text-sm text-[#4c4546] max-w-md">
-            Look up tickets by passenger phone number, view seat allocations, and manage cancellations.
+            Look up tickets by passenger phone number, view seat allocations,
+            and manage cancellations.
           </p>
         </div>
 
         {/* Search Bar */}
         <div className="relative w-full md:w-[420px]">
           <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none text-[#4c4546]">
-            <span className="material-symbols-outlined text-[20px]">search</span>
+            <span className="material-symbols-outlined text-[20px]">
+              search
+            </span>
           </div>
           <input
             type="text"
@@ -97,15 +107,15 @@ export default function OrdersPage() {
         <span className="text-xs font-bold tracking-widest text-[#4c4546] uppercase mr-2 shrink-0">
           Filter
         </span>
-        {(['All', 'Confirmed', 'Boarded', 'Cancelled'] as const).map((tab) => (
+        {(["All", "Confirmed", "Boarded", "Cancelled"] as const).map((tab) => (
           <button
             key={tab}
             type="button"
             onClick={() => setSelectedFilter(tab)}
             className={`shrink-0 px-5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
               selectedFilter === tab
-                ? 'bg-black text-white shadow-sm'
-                : 'bg-white/80 text-[#4c4546] hover:bg-white hover:text-black border border-white/60'
+                ? "bg-black text-white shadow-sm"
+                : "bg-white/80 text-[#4c4546] hover:bg-white hover:text-black border border-white/60"
             }`}
           >
             {tab}
@@ -147,8 +157,12 @@ export default function OrdersPage() {
                 <span className="md:hidden text-[10px] font-bold text-[#7e7576] uppercase">
                   Passenger
                 </span>
-                <span className="text-base font-bold text-[#1a1c1c]">{order.customerName}</span>
-                <span className="text-xs font-medium text-[#4c4546]">{order.phone}</span>
+                <span className="text-base font-bold text-[#1a1c1c]">
+                  {order.customerName}
+                </span>
+                <span className="text-xs font-medium text-[#4c4546]">
+                  {order.phone}
+                </span>
               </div>
 
               {/* Ticket ID & Seat */}
@@ -160,7 +174,9 @@ export default function OrdersPage() {
                   <span className="text-xs font-mono text-[#1a1c1c] bg-[#f3f3f4] px-2 py-1 rounded-md">
                     {order.ticketId}
                   </span>
-                  <span className="text-xs font-semibold text-[#4c4546]">{order.seatNo}</span>
+                  <span className="text-xs font-semibold text-[#4c4546]">
+                    {order.seatNo}
+                  </span>
                 </div>
               </div>
 
@@ -169,8 +185,12 @@ export default function OrdersPage() {
                 <span className="md:hidden text-[10px] font-bold text-[#7e7576] uppercase">
                   Route
                 </span>
-                <span className="text-sm font-semibold text-[#1a1c1c]">{order.route}</span>
-                <span className="text-xs text-[#7e7576]">{order.travelDate}</span>
+                <span className="text-sm font-semibold text-[#1a1c1c]">
+                  {order.route}
+                </span>
+                <span className="text-xs text-[#7e7576]">
+                  {order.travelDate}
+                </span>
               </div>
 
               {/* Status */}
@@ -181,16 +201,18 @@ export default function OrdersPage() {
                 <div className="flex items-center gap-1.5">
                   <span
                     className={`w-2 h-2 rounded-full ${
-                      order.status === 'Boarded'
-                        ? 'bg-black'
-                        : order.status === 'Confirmed'
-                        ? 'bg-emerald-500'
-                        : 'bg-[#ba1a1a]'
+                      order.status === "Boarded"
+                        ? "bg-black"
+                        : order.status === "Confirmed"
+                          ? "bg-emerald-500"
+                          : "bg-[#ba1a1a]"
                     }`}
                   />
                   <span
                     className={`text-xs font-bold ${
-                      order.status === 'Cancelled' ? 'text-[#ba1a1a]' : 'text-[#1a1c1c]'
+                      order.status === "Cancelled"
+                        ? "text-[#ba1a1a]"
+                        : "text-[#1a1c1c]"
                     }`}
                   >
                     {order.status}
@@ -218,7 +240,9 @@ export default function OrdersPage() {
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl space-y-5 border border-white">
             <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-              <h3 className="text-base font-bold text-[#1a1c1c]">E-Ticket Verification</h3>
+              <h3 className="text-base font-bold text-[#1a1c1c]">
+                E-Ticket Verification
+              </h3>
               <button
                 type="button"
                 onClick={() => setSelectedOrder(null)}
@@ -231,15 +255,21 @@ export default function OrdersPage() {
             <div className="bg-[#f8f9fa] p-4 rounded-2xl border border-dashed border-gray-300 space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-[#7e7576]">Passenger</span>
-                <span className="text-sm font-bold text-[#1a1c1c]">{selectedOrder.customerName}</span>
+                <span className="text-sm font-bold text-[#1a1c1c]">
+                  {selectedOrder.customerName}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-[#7e7576]">Phone</span>
-                <span className="text-xs font-medium text-[#1a1c1c]">{selectedOrder.phone}</span>
+                <span className="text-xs font-medium text-[#1a1c1c]">
+                  {selectedOrder.phone}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-[#7e7576]">Route</span>
-                <span className="text-xs font-bold text-[#1a1c1c]">{selectedOrder.route}</span>
+                <span className="text-xs font-bold text-[#1a1c1c]">
+                  {selectedOrder.route}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-[#7e7576]">Seat & Ticket</span>
@@ -249,7 +279,9 @@ export default function OrdersPage() {
               </div>
               <div className="flex justify-between items-center pt-2 border-t border-gray-200">
                 <span className="text-xs text-[#7e7576]">Fare Paid</span>
-                <span className="text-base font-extrabold text-[#1a1c1c]">{selectedOrder.amount} FCFA</span>
+                <span className="text-base font-extrabold text-[#1a1c1c]">
+                  {selectedOrder.amount} FCFA
+                </span>
               </div>
             </div>
 
