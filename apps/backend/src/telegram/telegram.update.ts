@@ -18,6 +18,88 @@ const sessions = new Map<number, Session>();
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const xaf = (n: number) => `${Math.round(n).toLocaleString('en-US')} XAF`;
+type SeatLayoutItem = number | 'aisle' | 'mid_door';
+
+const createSeatRows = (
+  startSeat: number,
+  rowCount: number,
+  leftSeats: number,
+  rightSeats: number,
+): SeatLayoutItem[][] =>
+  Array.from({ length: rowCount }, (_, rowIndex) => {
+    const firstSeat = startSeat + rowIndex * (leftSeats + rightSeats);
+    return [
+      ...Array.from({ length: leftSeats }, (_, index) => firstSeat + index),
+      'aisle',
+      ...Array.from(
+        { length: rightSeats },
+        (_, index) => firstSeat + leftSeats + index,
+      ),
+    ];
+  });
+
+const getSeatLayout = (busType: string, totalSeats: number): SeatLayoutItem[][] => {
+  let rows: SeatLayoutItem[][];
+  let rowSeatCounts: [number, number];
+
+  switch (busType) {
+    case 'MINIBUS':
+      rowSeatCounts = [1, 2];
+      rows = [...createSeatRows(1, 5, 1, 2), [16, 17, 18, 19]];
+      break;
+    case 'COASTER':
+      rowSeatCounts = [2, 1];
+      rows = [...createSeatRows(1, 7, 2, 1), [22, 23, 24, 25, 26]];
+      break;
+    case 'ULTRA_VIP':
+      rowSeatCounts = [2, 1];
+      rows = [
+        ...createSeatRows(1, 6, 2, 1),
+        ['mid_door'],
+        ...createSeatRows(19, 4, 2, 1),
+      ];
+      break;
+    case 'CLASSIC_3X2':
+      rowSeatCounts = [2, 3];
+      rows = [
+        ...createSeatRows(1, 5, 2, 3),
+        ['mid_door'],
+        ...createSeatRows(26, 6, 2, 3),
+        [56, 57, 58, 59, 60, 61],
+      ];
+      break;
+    case 'VIP_2X2':
+    default:
+      rowSeatCounts = [2, 2];
+      rows = [
+        ...createSeatRows(1, 5, 2, 2),
+        ['mid_door'],
+        ...createSeatRows(21, 6, 2, 2),
+        [45, 46, 47, 48, 49],
+      ];
+      break;
+  }
+
+  const highestMappedSeat = Math.max(
+    0,
+    ...rows.flatMap((row) => row.filter((item): item is number => typeof item === 'number')),
+  );
+  for (let nextSeat = highestMappedSeat + 1; nextSeat <= totalSeats; ) {
+    const row: SeatLayoutItem[] = [];
+    for (let index = 0; index < rowSeatCounts[0] && nextSeat <= totalSeats; index++) {
+      row.push(nextSeat++);
+    }
+    row.push('aisle');
+    for (let index = 0; index < rowSeatCounts[1] && nextSeat <= totalSeats; index++) {
+      row.push(nextSeat++);
+    }
+    rows.push(row);
+  }
+
+  return rows
+    .map((row) => row.filter((item) => item === 'aisle' || item === 'mid_door' || item <= totalSeats))
+    .filter((row) => row.some((item) => item !== 'aisle' && item !== 'mid_door'));
+};
 
 @Update()
 export class TelegramUpdate {
@@ -220,7 +302,7 @@ export class TelegramUpdate {
     await this.renderBusLayout(ctx, scheduleId, null);
   }
 
-  // Seat map (4 seats per row, aisle after the 2nd seat). Total seats come from the schedule.
+  // Keep seat positions aligned with the bus-specific layouts shown in the web inventory.
   async renderBusLayout(ctx: Context, scheduleId: string, selected: number | null) {
     const schedule = await this.booking.getSchedule(scheduleId);
     if (!schedule) {
@@ -239,19 +321,33 @@ export class TelegramUpdate {
       ],
     ];
 
-    for (let i = 1; i <= total; i += 4) {
-      const row: any[] = [];
-      for (let seat = i; seat < i + 4 && seat <= total; seat++) {
-        if (booked.has(seat)) {
-          row.push({ text: `🔴 ${pad(seat)}`, callback_data: 'seat_taken' });
-        } else if (selected === seat) {
-          row.push({ text: `✅ ${pad(seat)}`, callback_data: `select_seat_${scheduleId}_${seat}` });
-        } else {
-          row.push({ text: `💺 ${pad(seat)}`, callback_data: `select_seat_${scheduleId}_${seat}` });
-        }
-        if (seat === i + 1) row.push({ text: '·', callback_data: 'noop' }); // aisle
+    for (const layoutRow of getSeatLayout(String(schedule.busType), total)) {
+      if (layoutRow[0] === 'mid_door') {
+        keyboard.push([{ text: '🚪 Mid Exit / Boarding Door', callback_data: 'noop' }]);
+        continue;
       }
-      keyboard.push(row);
+
+      keyboard.push(
+        layoutRow.map((item) => {
+          if (item === 'aisle') return { text: '·', callback_data: 'noop' };
+          if (item === 'mid_door') {
+            return { text: '🚪 Mid Exit / Boarding Door', callback_data: 'noop' };
+          }
+          if (booked.has(item)) {
+            return { text: `🔴 ${pad(item)}`, callback_data: 'seat_taken' };
+          }
+          if (selected === item) {
+            return {
+              text: `✅ ${pad(item)}`,
+              callback_data: `select_seat_${scheduleId}_${item}`,
+            };
+          }
+          return {
+            text: `💺 ${pad(item)}`,
+            callback_data: `select_seat_${scheduleId}_${item}`,
+          };
+        }),
+      );
     }
 
     if (selected) {

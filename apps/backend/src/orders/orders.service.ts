@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, TicketStatus } from '@agency-ticketing/database';
+import { TicketStatus } from '@agency-ticketing/database';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type OrderStatusLabel = 'Confirmed' | 'Boarded' | 'Cancelled';
@@ -15,10 +15,6 @@ export interface OrderListItem {
   amount: number;
   status: OrderStatusLabel;
   createdAt: string;
-}
-
-export interface OrdersQueryInput {
-  agencyId?: string;
 }
 
 @Injectable()
@@ -37,11 +33,9 @@ export class OrdersService {
     }
   }
 
-  async getOrders({ agencyId }: OrdersQueryInput = {}): Promise<OrderListItem[]> {
-    const where: Prisma.TicketWhereInput | undefined = agencyId ? { agencyId } : undefined;
-
+  async getOrders(agencyId: string): Promise<OrderListItem[]> {
     const tickets = await this.prisma.ticket.findMany({
-      where,
+      where: { agencyId },
       include: {
         customer: true,
         schedule: { include: { agency: true } },

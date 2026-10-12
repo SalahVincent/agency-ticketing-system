@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { createHmac } from 'crypto';
-import { TicketStatus } from '@agency-ticketing/database';
+import { Prisma, TicketStatus } from '@agency-ticketing/database';
 import { PrismaService } from '../prisma/prisma.service';
+import type { CurrentAgentContext } from '../auth/clerk/current-agent.decorator';
 
 export interface ScannerTicketSummary {
   ticketId: string;
@@ -41,9 +42,17 @@ interface TicketRecord {
 export class ScannerService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async lookupTicket(ticketId: string): Promise<TicketRecord | null> {
-    const ticket = await this.prisma.ticket.findUnique({
-      where: { ticketId },
+  private async lookupTicket(ticketId: string, agencyId: string): Promise<TicketRecord | null> {
+    return this.loadTicket({ ticketId, agencyId, schedule: { is: { agencyId } } });
+  }
+
+  private async lookupTicketForSignature(ticketId: string): Promise<TicketRecord | null> {
+    return this.loadTicket({ ticketId });
+  }
+
+  private async loadTicket(where: Prisma.TicketWhereInput): Promise<TicketRecord | null> {
+    const ticket = await this.prisma.ticket.findFirst({
+      where,
       include: {
         customer: true,
         schedule: { include: { agency: true } },
@@ -83,7 +92,10 @@ export class ScannerService {
     };
   }
 
-  async validateTicket(code: string): Promise<ScannerValidationResponse> {
+  async validateTicket(
+    code: string,
+    agent: CurrentAgentContext,
+  ): Promise<ScannerValidationResponse> {
     const rawCode = (code ?? '').trim();
 
     if (!rawCode) {
@@ -102,7 +114,7 @@ export class ScannerService {
       providedSignature = candidateSignature ?? '';
     }
 
-    const ticket = await this.lookupTicket(ticketId);
+    const ticket = await this.lookupTicket(ticketId, agent.agencyId);
 
     if (!ticket) {
       return {
@@ -134,11 +146,19 @@ export class ScannerService {
       };
     }
 
+    const matchingAgent = agent.email
+      ? await this.prisma.agent.findFirst({
+          where: { email: agent.email, agencyId: agent.agencyId },
+          select: { id: true },
+        })
+      : null;
+
     const updatedTicket = await this.prisma.ticket.update({
       where: { id: ticket.id },
       data: {
         status: TicketStatus.BOARDED,
         boardedAt: new Date(),
+        validatedById: matchingAgent?.id ?? null,
       },
       include: {
         customer: true,
@@ -162,7 +182,7 @@ export class ScannerService {
   }
 
   async verifyTicketSignature(ticketId: string, signedCode: string): Promise<boolean> {
-    const ticket = await this.lookupTicket(ticketId);
+    const ticket = await this.lookupTicketForSignature(ticketId);
     if (!ticket) return false;
 
     const secret = process.env.TICKET_SIGNING_SECRET || 'demo-signing-secret';

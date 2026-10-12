@@ -21,16 +21,12 @@ export interface DashboardSummary {
   activity: DashboardEventItem[];
 }
 
-export interface DashboardQueryInput {
-  agencyId?: string;
-}
-
 @Injectable()
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getSummary({ agencyId }: DashboardQueryInput = {}): Promise<DashboardSummary> {
-    const ticketWhere: Prisma.TicketWhereInput | undefined = agencyId ? { agencyId } : undefined;
+  async getSummary(agencyId: string): Promise<DashboardSummary> {
+    const ticketWhere: Prisma.TicketWhereInput = { agencyId };
 
     const [revenueResult, scheduleCount, bookedSeats, boardedCount, tickets] = await Promise.all([
       this.prisma.ticket.aggregate({
@@ -41,7 +37,7 @@ export class DashboardService {
         _sum: { amount: true },
       }),
       this.prisma.routeSchedule.count({
-        where: agencyId ? { agencyId } : undefined,
+        where: { agencyId },
       }),
       this.prisma.ticket.count({
         where: {
