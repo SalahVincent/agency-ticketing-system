@@ -103,6 +103,29 @@ async function main() {
     });
   }
 
+  const notificationCount = await prisma.notification.count({
+    where: { agencyId: null, type: 'SYSTEM' },
+  });
+
+  if (notificationCount === 0) {
+    await prisma.notification.createMany({
+      data: [
+        {
+          agencyId: null,
+          type: 'SYSTEM',
+          title: 'Platform Maintenance Notice',
+          description: 'Scheduled platform maintenance will occur tonight at 02:00 UTC.',
+        },
+        {
+          agencyId: null,
+          type: 'SYSTEM',
+          title: 'New Driver Features Available',
+          description: 'New dispatch and scan insights are now available for all partner agencies.',
+        },
+      ],
+    });
+  }
+
   console.log('✅ Seeding complete!');
 }
 

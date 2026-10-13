@@ -1,10 +1,11 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   InternalServerErrorException,
 } from '@nestjs/common';
 import { createClerkClient } from '@clerk/backend';
-import { Prisma } from '@agency-ticketing/database';
+import { BusType, Prisma, ScheduleStatus } from '@agency-ticketing/database';
 import { ClerkAuthGuard } from '../auth/clerk/clerk-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -32,6 +33,17 @@ export type AgencyScheduleSummary = Prisma.RouteScheduleGetPayload<{
 export interface RegisteredAgency {
   agencyId: string;
   agencyName: string;
+}
+
+export interface CreateAgencyScheduleInput {
+  origin: string;
+  destination: string;
+  departureTime: string;
+  busNumber: string;
+  busName: string;
+  busType: string;
+  pricePerSeat: number;
+  totalSeats?: number;
 }
 
 @Injectable()
@@ -153,6 +165,122 @@ export class AgenciesService {
       },
       orderBy: { createdAt: 'asc' },
     });
+  }
+
+  async createAgencySchedule(
+    agencyId: string,
+    input: CreateAgencyScheduleInput,
+  ): Promise<AgencyScheduleSummary> {
+    const origin = input.origin?.trim();
+    const destination = input.destination?.trim();
+    const busNumber = input.busNumber?.trim();
+    const busName = input.busName?.trim();
+    const departureTime = this.normalizeDepartureTime(input.departureTime);
+    const pricePerSeat = Number(input.pricePerSeat);
+
+    if (!origin || !destination) {
+      throw new BadRequestException('Origin and destination are required.');
+    }
+    if (!busNumber || !busName) {
+      throw new BadRequestException('Bus number and bus name are required.');
+    }
+    if (!Number.isFinite(pricePerSeat) || pricePerSeat <= 0) {
+      throw new BadRequestException('Price per seat must be a positive number.');
+    }
+
+    const busTypeMap: Record<string, BusType> = {
+      minibus: BusType.MINIBUS,
+      coaster: BusType.COASTER,
+      ultra_vip: BusType.ULTRA_VIP,
+      vip_2x2: BusType.VIP_2X2,
+      classic_3x2: BusType.CLASSIC_3X2,
+      MINIBUS: BusType.MINIBUS,
+      COASTER: BusType.COASTER,
+      ULTRA_VIP: BusType.ULTRA_VIP,
+      VIP_2X2: BusType.VIP_2X2,
+      CLASSIC_3X2: BusType.CLASSIC_3X2,
+    };
+    const normalizedBusType = busTypeMap[input.busType];
+    if (!normalizedBusType) {
+      throw new BadRequestException('A valid bus type is required.');
+    }
+
+    const defaultSeatCapacities: Record<BusType, number> = {
+      [BusType.MINIBUS]: 19,
+      [BusType.COASTER]: 26,
+      [BusType.ULTRA_VIP]: 30,
+      [BusType.VIP_2X2]: 49,
+      [BusType.CLASSIC_3X2]: 61,
+    };
+
+    const totalSeats =
+      Number.isFinite(Number(input.totalSeats)) && Number(input.totalSeats) > 0
+        ? Number(input.totalSeats)
+        : defaultSeatCapacities[normalizedBusType];
+
+    return this.prisma.routeSchedule.create({
+      data: {
+        agencyId,
+        origin,
+        destination,
+        departureTime,
+        busNumber,
+        busName,
+        busType: normalizedBusType,
+        totalSeats,
+        bookedSeats: 0,
+        pricePerSeat,
+        status: ScheduleStatus.ON_TIME,
+      },
+      select: {
+        id: true,
+        agencyId: true,
+        origin: true,
+        destination: true,
+        departureTime: true,
+        busName: true,
+        busNumber: true,
+        busType: true,
+        pricePerSeat: true,
+        totalSeats: true,
+        bookedSeats: true,
+        status: true,
+      },
+    });
+  }
+
+  private normalizeDepartureTime(value: string): string {
+    const cleaned = value?.trim();
+    if (!cleaned) {
+      throw new BadRequestException('Departure time is required.');
+    }
+
+    const directMatch = cleaned.match(/^\d{1,2}:\d{2}(?:\s?[AaPp][Mm])?$/);
+    if (directMatch) {
+      const [timePart, periodPart] = cleaned.split(/\s+/);
+      const [hoursRaw, minutesRaw] = timePart.split(':');
+      const hour = Number(hoursRaw);
+      const minute = Number(minutesRaw);
+      if (!Number.isFinite(hour) || !Number.isFinite(minute) || minute < 0 || minute > 59) {
+        throw new BadRequestException('Departure time must be a valid clock time.');
+      }
+
+      const normalizedHour = Number(periodPart ? hour : (hour % 12 === 0 ? 12 : hour % 12));
+      const suffix = /pm/i.test(periodPart || (hour >= 12 ? 'PM' : 'AM')) ? 'PM' : 'AM';
+      const finalHour = normalizedHour === 0 ? 12 : normalizedHour;
+      return `${String(finalHour).padStart(2, '0')}:${String(minute).padStart(2, '0')} ${suffix}`;
+    }
+
+    const parsedDate = new Date(cleaned);
+    if (Number.isNaN(parsedDate.getTime())) {
+      throw new BadRequestException('Departure time must be a valid time string.');
+    }
+
+    const hours = parsedDate.getHours();
+    const minutes = parsedDate.getMinutes();
+    const suffix = hours >= 12 ? 'PM' : 'AM';
+    const normalizedHour = hours % 12 === 0 ? 12 : hours % 12;
+    return `${String(normalizedHour).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${suffix}`;
   }
 
   // Gets occupied seat numbers for a schedule grid, ordered in the same way the frontend displays them.

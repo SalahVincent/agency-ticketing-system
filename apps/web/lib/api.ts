@@ -3,16 +3,17 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost
 export async function fetchApi<T>(
   path: string,
   getToken: () => Promise<string | null>,
+  options: RequestInit = {},
 ): Promise<T> {
   try {
-    return await requestApi<T>(path, getToken);
+    return await requestApi<T>(path, getToken, options);
   } catch (error) {
     if (!(error instanceof Error) || error.message !== 'No agency linked to this account') {
       throw error;
     }
 
     await postApi('/agencies/register', getToken, {});
-    return requestApi<T>(path, getToken);
+    return requestApi<T>(path, getToken, options);
   }
 }
 

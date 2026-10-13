@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { createHmac } from 'crypto';
-import { Prisma, TicketStatus } from '@agency-ticketing/database';
+import { NotificationType, Prisma, TicketStatus } from '@agency-ticketing/database';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CurrentAgentContext } from '../auth/clerk/current-agent.decorator';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export interface ScannerTicketSummary {
   ticketId: string;
@@ -40,7 +41,10 @@ interface TicketRecord {
 
 @Injectable()
 export class ScannerService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   private async lookupTicket(ticketId: string, agencyId: string): Promise<TicketRecord | null> {
     return this.loadTicket({ ticketId, agencyId, schedule: { is: { agencyId } } });
@@ -165,6 +169,13 @@ export class ScannerService {
         schedule: { include: { agency: true } },
       },
     });
+
+    void this.notificationsService.notify(
+      updatedTicket.schedule.agencyId,
+      NotificationType.CHECK_IN,
+      'Guest checked in',
+      `${updatedTicket.customer.name} checked in for ${updatedTicket.schedule.origin} → ${updatedTicket.schedule.destination}.`,
+    );
 
     return {
       result: 'VERIFIED',

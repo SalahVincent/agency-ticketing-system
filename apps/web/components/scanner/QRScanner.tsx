@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { useAuth } from '@clerk/nextjs';
-import jsQR from 'jsqr';
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import { useAuth } from "@clerk/nextjs";
+import jsQR from "jsqr";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
 
 interface TicketInfo {
   ticketId: string;
@@ -17,49 +17,52 @@ interface TicketInfo {
 }
 
 type Outcome = {
-  kind: 'VERIFIED' | 'ALREADY_BOARDED' | 'INVALID' | 'CANCELLED' | 'ERROR';
+  kind: "VERIFIED" | "ALREADY_BOARDED" | "INVALID" | "CANCELLED" | "ERROR";
   message: string;
   ticket?: TicketInfo;
 };
 
 const OUTCOME_UI: Record<
-  Outcome['kind'],
+  Outcome["kind"],
   { icon: string; title: string; circle: string; text: string }
 > = {
   VERIFIED: {
-    icon: 'check',
-    title: 'VERIFIED',
-    circle: 'bg-emerald-500 shadow-emerald-500/30',
-    text: 'text-emerald-700',
+    icon: "check",
+    title: "VERIFIED",
+    circle: "bg-emerald-500 shadow-emerald-500/30",
+    text: "text-emerald-700",
   },
   ALREADY_BOARDED: {
-    icon: 'warning',
-    title: 'ALREADY BOARDED',
-    circle: 'bg-amber-500 shadow-amber-500/30',
-    text: 'text-amber-700',
+    icon: "warning",
+    title: "ALREADY BOARDED",
+    circle: "bg-amber-500 shadow-amber-500/30",
+    text: "text-amber-700",
   },
   INVALID: {
-    icon: 'close',
-    title: 'INVALID TICKET',
-    circle: 'bg-red-500 shadow-red-500/30',
-    text: 'text-red-700',
+    icon: "close",
+    title: "INVALID TICKET",
+    circle: "bg-red-500 shadow-red-500/30",
+    text: "text-red-700",
   },
   CANCELLED: {
-    icon: 'block',
-    title: 'TICKET CANCELLED',
-    circle: 'bg-red-500 shadow-red-500/30',
-    text: 'text-red-700',
+    icon: "block",
+    title: "TICKET CANCELLED",
+    circle: "bg-red-500 shadow-red-500/30",
+    text: "text-red-700",
   },
   ERROR: {
-    icon: 'wifi_off',
-    title: 'CONNECTION ERROR',
-    circle: 'bg-red-500 shadow-red-500/30',
-    text: 'text-red-700',
+    icon: "wifi_off",
+    title: "CONNECTION ERROR",
+    circle: "bg-red-500 shadow-red-500/30",
+    text: "text-red-700",
   },
 };
 
 const formatTime = (iso: string) =>
-  new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  new Date(iso).toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 export default function QRScannerPage() {
   const { getToken } = useAuth();
@@ -68,8 +71,8 @@ export default function QRScannerPage() {
   const isVerifyingRef = useRef<boolean>(false);
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string>('');
-  const [manualCode, setManualCode] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string>("");
+  const [manualCode, setManualCode] = useState<string>("");
 
   // Result of the last scan
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -82,25 +85,29 @@ export default function QRScannerPage() {
       const stream = await navigator.mediaDevices
         .getUserMedia({
           video: {
-            facingMode: { exact: 'environment' },
+            facingMode: { exact: "environment" },
           },
         })
         .catch(() => {
           // Fallback if the exact constraint fails (e.g. laptops)
-          return navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+          return navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment" },
+          });
         });
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute('playsinline', 'true'); // Required for iOS Safari
+        videoRef.current.setAttribute("playsinline", "true"); // Required for iOS Safari
         await videoRef.current.play();
         setHasPermission(true);
-        setErrorMessage('');
+        setErrorMessage("");
       }
     } catch (err: unknown) {
-      console.error('Camera access error:', err);
+      console.error("Camera access error:", err);
       setHasPermission(false);
-      setErrorMessage('Unable to access camera. Please check camera permissions.');
+      setErrorMessage(
+        "Unable to access camera. Please check camera permissions.",
+      );
     }
   }, []);
 
@@ -121,43 +128,51 @@ export default function QRScannerPage() {
   }, [startCamera, stopCamera]);
 
   // Send a scanned/typed code to the backend and show the result
-  const verifyCode = useCallback(async (payload: string) => {
-    if (isVerifyingRef.current) return; // ignore duplicate detections of the same frame/QR
-    isVerifyingRef.current = true;
-    setIsVerifying(true);
-    setIsScanningActive(false);
+  const verifyCode = useCallback(
+    async (payload: string) => {
+      if (isVerifyingRef.current) return; // ignore duplicate detections of the same frame/QR
+      isVerifyingRef.current = true;
+      setIsVerifying(true);
+      setIsScanningActive(false);
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
 
-    try {
-      const token = await getToken();
-      if (!token) throw new Error('Authentication required');
+      try {
+        const token = await getToken();
+        if (!token) throw new Error("Authentication required");
 
-      const res = await fetch(`${API_URL}/scanner/validate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ code: payload }),
-        signal: controller.signal,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${API_URL}/scanner/validate`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ code: payload }),
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const data = await res.json();
-      setOutcome({ kind: data.result, message: data.message, ticket: data.ticket });
-    } catch (err) {
-      console.error('Ticket validation failed:', err);
-      setOutcome({
-        kind: 'ERROR',
-        message: 'Could not reach the server. Check the connection and try again.',
-      });
-    } finally {
-      clearTimeout(timer);
-      setIsVerifying(false);
-    }
-  }, [getToken]);
+        const data = await res.json();
+        setOutcome({
+          kind: data.result,
+          message: data.message,
+          ticket: data.ticket,
+        });
+      } catch (err) {
+        console.error("Ticket validation failed:", err);
+        setOutcome({
+          kind: "ERROR",
+          message:
+            "Could not reach the server. Check the connection and try again.",
+        });
+      } finally {
+        clearTimeout(timer);
+        setIsVerifying(false);
+      }
+    },
+    [getToken],
+  );
 
   // Frame processing loop for QR code detection
   useEffect(() => {
@@ -170,18 +185,23 @@ export default function QRScannerPage() {
         videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA
       ) {
         const video = videoRef.current;
-        const canvas = canvasRef.current || document.createElement('canvas');
+        const canvas = canvasRef.current || document.createElement("canvas");
         canvasRef.current = canvas;
 
-        const context = canvas.getContext('2d', { willReadFrequently: true });
+        const context = canvas.getContext("2d", { willReadFrequently: true });
         if (context) {
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
           context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+          const imageData = context.getImageData(
+            0,
+            0,
+            canvas.width,
+            canvas.height,
+          );
           const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: 'dontInvert',
+            inversionAttempts: "dontInvert",
           });
 
           if (code && code.data) {
@@ -209,7 +229,7 @@ export default function QRScannerPage() {
     e.preventDefault();
     if (!manualCode.trim()) return;
     verifyCode(manualCode);
-    setManualCode('');
+    setManualCode("");
   };
 
   const handleResetScanner = () => {
@@ -227,7 +247,12 @@ export default function QRScannerPage() {
 
       {/* Full-bleed Camera Viewport */}
       <div className="absolute inset-0 z-0 w-full h-full overflow-hidden">
-        <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+        <video
+          ref={videoRef}
+          className="w-full h-full object-cover"
+          playsInline
+          muted
+        />
 
         {/* Camera Permission Error Overlay */}
         {hasPermission === false && (
@@ -255,11 +280,13 @@ export default function QRScannerPage() {
           className="bg-white/90 backdrop-blur-md text-[#1a1c1c] p-3 rounded-full shadow-lg active:scale-95 transition-transform flex items-center justify-center cursor-pointer"
           aria-label="Go back"
         >
-          <span className="material-symbols-outlined text-[22px]">arrow_back</span>
+          <span className="material-symbols-outlined text-[22px]">
+            arrow_back
+          </span>
         </button>
 
         <div className="bg-black/40 backdrop-blur-md border border-white/20 text-white px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide">
-          {isVerifying ? 'Checking ticket…' : 'Scanner Active'}
+          {isVerifying ? "Checking ticket…" : "Scanner Active"}
         </div>
       </div>
 
@@ -288,14 +315,20 @@ export default function QRScannerPage() {
               </span>
             </div>
 
-            <h2 className={`text-xl font-extrabold tracking-tight mb-1 ${ui.text}`}>{ui.title}</h2>
+            <h2
+              className={`text-xl font-extrabold tracking-tight mb-1 ${ui.text}`}
+            >
+              {ui.title}
+            </h2>
 
             {outcome.ticket && (
-              <p className="text-lg font-bold text-[#1a1c1c] mb-1">{outcome.ticket.passengerName}</p>
+              <p className="text-lg font-bold text-[#1a1c1c] mb-1">
+                {outcome.ticket.passengerName}
+              </p>
             )}
 
             <p className="text-sm text-[#4c4546] mb-1">
-              {outcome.kind === 'ALREADY_BOARDED' && outcome.ticket?.boardedAt
+              {outcome.kind === "ALREADY_BOARDED" && outcome.ticket?.boardedAt
                 ? `Already boarded at ${formatTime(outcome.ticket.boardedAt)}.`
                 : outcome.message}
             </p>
@@ -303,10 +336,14 @@ export default function QRScannerPage() {
             {outcome.ticket && (
               <>
                 <div className="flex items-center gap-2 text-[#4c4546] text-sm bg-gray-100 px-4 py-1.5 rounded-full mt-2 font-medium">
-                  <span className="material-symbols-outlined text-[18px]">chair</span>
+                  <span className="material-symbols-outlined text-[18px]">
+                    chair
+                  </span>
                   <span>Seat {outcome.ticket.seatNo}</span>
                 </div>
-                <p className="text-sm text-[#4c4546] mt-3 font-medium">{outcome.ticket.route}</p>
+                <p className="text-sm text-[#4c4546] mt-3 font-medium">
+                  {outcome.ticket.route}
+                </p>
                 <p className="text-xs text-[#4c4546]/80">
                   {outcome.ticket.agencyName} · {outcome.ticket.departureTime}
                 </p>
@@ -321,7 +358,7 @@ export default function QRScannerPage() {
               onClick={handleResetScanner}
               className="mt-6 bg-black text-white w-full py-3.5 rounded-full text-sm font-bold active:scale-95 transition-transform cursor-pointer shadow-md"
             >
-              {outcome.kind === 'VERIFIED' ? 'Scan Next Ticket' : 'Scan Again'}
+              {outcome.kind === "VERIFIED" ? "Scan Next Ticket" : "Scan Again"}
             </button>
           </div>
         </div>

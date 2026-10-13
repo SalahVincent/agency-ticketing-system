@@ -2,8 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, createHmac } from 'crypto';
 import * as QRCode from 'qrcode';
-import { Prisma, TicketStatus } from '@agency-ticketing/database';
+import { NotificationType, Prisma, TicketStatus } from '@agency-ticketing/database';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export type ScheduleWithAgency = Prisma.RouteScheduleGetPayload<{
   include: { agency: true };
@@ -31,6 +32,7 @@ export class TelegramBookingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   getSchedule(scheduleId: string): Promise<ScheduleWithAgency | null> {
@@ -118,6 +120,23 @@ export class TelegramBookingService {
 
       return created;
     });
+
+    void this.notificationsService.notify(
+      ticket.agencyId,
+      NotificationType.TICKET_SALE,
+      'New ticket sold',
+      `${passengerName} booked seat ${seatNo} on ${ticket.schedule.origin} → ${ticket.schedule.destination}.`,
+    );
+
+    const seatsLeft = ticket.schedule.totalSeats - (ticket.schedule.bookedSeats + 1);
+    if (seatsLeft <= 5 && seatsLeft >= 0) {
+      void this.notificationsService.notify(
+        ticket.agencyId,
+        NotificationType.INVENTORY_ALERT,
+        'Inventory alert',
+        `${ticket.schedule.busName || 'Route'} has ${seatsLeft} seat${seatsLeft === 1 ? '' : 's'} remaining.`,
+      );
+    }
 
     // The scanner will later verify `ticketId.signature` with the same secret.
     const qr = await QRCode.toBuffer(`${ticket.ticketId}.${ticket.qrCodeSignature}`, {

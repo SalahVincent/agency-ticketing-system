@@ -131,7 +131,11 @@ export default function InventoryPage() {
         }
       } catch (error) {
         console.error("Failed to load inventory schedules", error);
-        setInventoryError(error instanceof Error ? error.message : "Unable to load live route inventory.");
+        setInventoryError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load live route inventory.",
+        );
       }
     };
 
@@ -155,7 +159,11 @@ export default function InventoryPage() {
         setCurrentBookedSeatNumbers(bookedSeats.map((seat) => Number(seat)));
       } catch (error) {
         console.error("Failed to load booked seat numbers", error);
-        setInventoryError(error instanceof Error ? error.message : "Unable to load booked seats.");
+        setInventoryError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load booked seats.",
+        );
         setCurrentBookedSeatNumbers([]);
       }
     };
@@ -258,31 +266,56 @@ export default function InventoryPage() {
     }
   };
 
-  const handleCreateSession = (e: React.FormEvent) => {
+  const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBusNumber || !newBusName) return;
 
-    const busDetails = getBusDetails(newBusType);
-    const newSession: RouteSchedule = {
-      id: `SCH-${schedules.length + 101}`,
-      origin: newOrigin,
-      destination: newDestination,
-      departureTime: newDepartureTime,
-      busNumber: newBusNumber,
-      busName: newBusName,
-      busType: newBusType,
-      busTypeName: busDetails.name,
-      totalSeats: busDetails.capacity,
-      bookedSeats: 0,
-      pricePerSeat: parseInt(newPrice) || 5000,
-      status: "On Time",
-    };
+    try {
+      const busDetails = getBusDetails(newBusType);
+      const payload = {
+        origin: newOrigin,
+        destination: newDestination,
+        departureTime: newDepartureTime,
+        busNumber: newBusNumber,
+        busName: newBusName,
+        busType: newBusType,
+        pricePerSeat: Number(newPrice) || 5000,
+        totalSeats: busDetails.capacity,
+      };
 
-    setSchedules([newSession, ...schedules]);
-    setSelectedRoute(newSession.id);
-    setShowCreateSessionModal(false);
-    setNewBusNumber("");
-    setNewBusName("");
+      const createdSchedule = await fetchApi<any>(
+        "/agencies/schedules",
+        getToken,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      const refreshedSchedules = await fetchApi<any[]>(
+        "/agencies/schedules",
+        getToken,
+      );
+      const nextSchedules = refreshedSchedules.map(normalizeSchedule);
+      setSchedules(nextSchedules);
+      const resolvedRouteId =
+        createdSchedule?.id ?? nextSchedules[0]?.id ?? null;
+      setSelectedRoute(resolvedRouteId);
+      setShowCreateSessionModal(false);
+      setNewBusNumber("");
+      setNewBusName("");
+      setInventoryError("");
+    } catch (error) {
+      console.error("Failed to create schedule", error);
+      setInventoryError(
+        error instanceof Error
+          ? error.message
+          : "Unable to create the travel session.",
+      );
+    }
   };
 
   const handleSelectClientOption = (
@@ -383,7 +416,7 @@ export default function InventoryPage() {
 
   return (
     <div className="w-full min-h-screen bg-slate-50 text-[#1a1c1c] pb-12">
-      <div className="max-w-[1440px] mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
+      <div className="max-w-360 mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {/* Responsive Station Branding Banner */}
         <div className="bg-emerald-900 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-lg">
           <div className="flex items-center gap-3 sm:gap-4">
@@ -600,7 +633,7 @@ export default function InventoryPage() {
 
               {/* Scroll Container with Responsive Padding */}
               <div className="w-full overflow-x-auto pb-4 pt-2 flex justify-start md:justify-center touch-pan-x">
-                <div className="min-w-[280px] sm:min-w-[340px] px-2">
+                <div className="min-w-70 sm:min-w-85 px-2">
                   <BusSeatLayout
                     busType={currentBus.busType}
                     totalSeats={currentBus.totalSeats}
@@ -803,7 +836,7 @@ export default function InventoryPage() {
             </div>
 
             {/* Chat Simulator */}
-            <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm flex flex-col justify-between h-[480px] sm:h-[580px]">
+            <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm flex flex-col justify-between h-120 sm:h-145">
               <div>
                 <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-3">
                   <div className="flex items-center gap-2">
@@ -830,7 +863,7 @@ export default function InventoryPage() {
                   </button>
                 </div>
 
-                <div className="space-y-2.5 overflow-y-auto max-h-[340px] sm:max-h-[420px] pr-1">
+                <div className="space-y-2.5 overflow-y-auto max-h-85 sm:max-h-105 pr-1">
                   {chatLog.map((chat, idx) => (
                     <div
                       key={idx}

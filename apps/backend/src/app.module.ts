@@ -9,6 +9,7 @@ import { TelegramModule } from './telegram/telegram.module';
 import { ScannerModule } from './scanner/scanner.module';
 import { OrdersModule } from './orders/orders.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { NotificationsModule } from './notifications/notifications.module';
 // import { SchedulesModule } from './schedules/schedules.module';
 
 @Module({
@@ -30,6 +31,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     ScannerModule,
     OrdersModule,
     DashboardModule,
+    NotificationsModule,
     // SchedulesModule,
   ],
 })

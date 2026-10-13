@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useClerk, useUser } from '@clerk/nextjs';
-import Link from 'next/link';
+import React, { useState } from "react";
+import { useClerk, useUser } from "@clerk/nextjs";
+import Link from "next/link";
 
 export default function ProfilePage() {
   const { user } = useUser();
@@ -11,64 +11,75 @@ export default function ProfilePage() {
 
   // Mock Agency & Agent Data
   const agencyData = {
-    agencyName: 'GENERAL Express Transport',
-    agencyCode: 'GENERAL-CM',
-    hqLocation: 'Kumba / Bamenda Agency Network',
-    activeFleetCount: '48 Buses',
-    agencyType: 'Intercity Passenger & Express Cargo Agency',
+    agencyName: "GENERAL Express Transport",
+    agencyCode: "GENERAL-CM",
+    hqLocation: "Kumba / Bamenda Agency Network",
+    activeFleetCount: "48 Buses",
+    agencyType: "Intercity Passenger & Express Cargo Agency",
     agent: {
-      name: 'Vincent Tufoin',
-      role: 'Terminal Operations & Ticketing Agent',
-      agentId: 'GENERAL-AG-8842',
-      station: 'Douala Central Terminal (Bay 4)',
-      email: 'v.tufoin@general.com',
-      phone: '+237 6 70 00 11 22',
-      joinedDate: 'March 2025',
+      name: "Vincent Tufoin",
+      role: "Terminal Operations & Ticketing Agent",
+      agentId: "GENERAL-AG-8842",
+      station: "Douala Central Terminal (Bay 4)",
+      email: "v.tufoin@general.com",
+      phone: "+237 6 70 00 11 22",
+      joinedDate: "March 2025",
     },
     stats: [
-      { label: 'Tickets Validated Today', value: '142', icon: 'qr_code_scanner' },
-      { label: 'Agency Bookings Managed', value: '1,280', icon: 'confirmation_number' },
-      { label: 'Shift Rating', value: '4.9/5', icon: 'star' },
+      {
+        label: "Tickets Validated Today",
+        value: "142",
+        icon: "qr_code_scanner",
+      },
+      {
+        label: "Agency Bookings Managed",
+        value: "1,280",
+        icon: "confirmation_number",
+      },
+      { label: "Shift Rating", value: "4.9/5", icon: "star" },
     ],
   };
 
   const { agent } = agencyData;
-  const clerkName = user?.fullName || [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Agent';
+  const clerkName =
+    user?.fullName ||
+    [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
+    "Agent";
   const clerkInitials = clerkName
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0])
-    .join('')
+    .join("")
     .toUpperCase();
-  const clerkEmail = user?.primaryEmailAddress?.emailAddress || 'Not provided';
-  const clerkPhone = user?.primaryPhoneNumber?.phoneNumber || 'Not provided';
+  const clerkEmail = user?.primaryEmailAddress?.emailAddress || "Not provided";
+  const clerkPhone = user?.primaryPhoneNumber?.phoneNumber || "Not provided";
   const memberSince = user?.createdAt
-    ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    : '—';
+    ? new Date(user.createdAt).toLocaleDateString("en-US", {
+        month: "long",
+        year: "numeric",
+      })
+    : "—";
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      
       {/* Header Banner: Agency & Agent Profile Card */}
       <div className="bg-white/80 backdrop-blur-xl border border-white/80 rounded-3xl p-6 sm:p-8 shadow-[0_10px_30px_rgba(0,0,0,0.04)] relative overflow-hidden">
-        
         {/* Subtle Background Accent */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-linear-to-bl from-black/5 to-transparent rounded-bl-full pointer-events-none" />
 
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 relative z-10">
-          
           {/* Avatar Container */}
           <div className="relative">
             <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-black text-white flex items-center justify-center text-3xl font-extrabold shadow-lg border-4 border-white">
               {clerkInitials}
             </div>
             {/* Duty Status Dot Indicator */}
-            <span 
+            <span
               className={`absolute bottom-1 right-1 w-5 h-5 rounded-full border-2 border-white ${
-                isOnDuty ? 'bg-emerald-500' : 'bg-gray-400'
+                isOnDuty ? "bg-emerald-500" : "bg-gray-400"
               }`}
-              title={isOnDuty ? 'On Duty' : 'Off Duty'}
+              title={isOnDuty ? "On Duty" : "Off Duty"}
             />
           </div>
 
@@ -78,7 +89,9 @@ export default function ProfilePage() {
               <div>
                 {/* Prominent Agency Badge */}
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-black text-white rounded-full text-xs font-bold tracking-wide uppercase mb-1.5">
-                  <span className="material-symbols-outlined text-[15px]">directions_bus</span>
+                  <span className="material-symbols-outlined text-[15px]">
+                    directions_bus
+                  </span>
                   {agencyData.agencyName}
                 </div>
 
@@ -96,23 +109,29 @@ export default function ProfilePage() {
                 onClick={() => setIsOnDuty(!isOnDuty)}
                 className={`self-center sm:self-start px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border ${
                   isOnDuty
-                    ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20'
-                    : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
+                    ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20"
+                    : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full ${isOnDuty ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-                {isOnDuty ? 'Status: On Duty' : 'Status: Off Duty'}
+                <span
+                  className={`w-2 h-2 rounded-full ${isOnDuty ? "bg-emerald-500" : "bg-gray-400"}`}
+                />
+                {isOnDuty ? "Status: On Duty" : "Status: Off Duty"}
               </button>
             </div>
 
             {/* Tags / Badges */}
             <div className="flex flex-wrap justify-center sm:justify-start gap-2 pt-1">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#f3f3f4] text-[#1a1c1c] rounded-full text-xs font-semibold">
-                <span className="material-symbols-outlined text-[16px]">badge</span>
+                <span className="material-symbols-outlined text-[16px]">
+                  badge
+                </span>
                 {agent.agentId}
               </span>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#f3f3f4] text-[#1a1c1c] rounded-full text-xs font-semibold">
-                <span className="material-symbols-outlined text-[16px]">location_on</span>
+                <span className="material-symbols-outlined text-[16px]">
+                  location_on
+                </span>
                 {agent.station}
               </span>
             </div>
@@ -123,15 +142,19 @@ export default function ProfilePage() {
       {/* Daily Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {agencyData.stats.map((stat) => (
-          <div 
-            key={stat.label} 
+          <div
+            key={stat.label}
             className="bg-white/80 backdrop-blur-xl border border-white/80 rounded-2xl p-5 shadow-[0_10px_30px_rgba(0,0,0,0.04)] flex items-center gap-4"
           >
             <div className="w-12 h-12 rounded-2xl bg-black text-white flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-[24px]">{stat.icon}</span>
+              <span className="material-symbols-outlined text-[24px]">
+                {stat.icon}
+              </span>
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-[#1a1c1c]">{stat.value}</p>
+              <p className="text-2xl font-extrabold text-[#1a1c1c]">
+                {stat.value}
+              </p>
               <p className="text-xs font-medium text-[#7e7576]">{stat.label}</p>
             </div>
           </div>
@@ -140,34 +163,47 @@ export default function ProfilePage() {
 
       {/* Agency Details & Agent Contact Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
         {/* Agency Information Card */}
         <div className="bg-white/80 backdrop-blur-xl border border-white/80 rounded-3xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.04)] space-y-4">
           <h2 className="text-lg font-extrabold text-[#1a1c1c] flex items-center gap-2">
-            <span className="material-symbols-outlined text-[20px]">domain</span>
+            <span className="material-symbols-outlined text-[20px]">
+              domain
+            </span>
             Agency Details
           </h2>
 
           <div className="space-y-3 text-sm">
             <div className="flex items-center justify-between py-2 border-b border-[#cfc4c5]/20">
               <span className="text-[#7e7576] font-medium">Agency Name</span>
-              <span className="font-extrabold text-[#1a1c1c]">{agencyData.agencyName}</span>
+              <span className="font-extrabold text-[#1a1c1c]">
+                {agencyData.agencyName}
+              </span>
             </div>
             <div className="flex items-center justify-between py-2 border-b border-[#cfc4c5]/20">
               <span className="text-[#7e7576] font-medium">Agency Code</span>
-              <span className="font-semibold text-[#1a1c1c]">{agencyData.agencyCode}</span>
+              <span className="font-semibold text-[#1a1c1c]">
+                {agencyData.agencyCode}
+              </span>
             </div>
             <div className="flex items-center justify-between py-2 border-b border-[#cfc4c5]/20">
-              <span className="text-[#7e7576] font-medium">Primary Routes / Network</span>
-              <span className="font-semibold text-[#1a1c1c] text-right">{agencyData.hqLocation}</span>
+              <span className="text-[#7e7576] font-medium">
+                Primary Routes / Network
+              </span>
+              <span className="font-semibold text-[#1a1c1c] text-right">
+                {agencyData.hqLocation}
+              </span>
             </div>
             <div className="flex items-center justify-between py-2 border-b border-[#cfc4c5]/20">
               <span className="text-[#7e7576] font-medium">Fleet Size</span>
-              <span className="font-semibold text-[#1a1c1c]">{agencyData.activeFleetCount}</span>
+              <span className="font-semibold text-[#1a1c1c]">
+                {agencyData.activeFleetCount}
+              </span>
             </div>
             <div className="flex items-center justify-between py-2">
               <span className="text-[#7e7576] font-medium">Service Type</span>
-              <span className="font-semibold text-[#1a1c1c] text-right">{agencyData.agencyType}</span>
+              <span className="font-semibold text-[#1a1c1c] text-right">
+                {agencyData.agencyType}
+              </span>
             </div>
           </div>
         </div>
@@ -175,7 +211,9 @@ export default function ProfilePage() {
         {/* Agent Account & Contact Details */}
         <div className="bg-white/80 backdrop-blur-xl border border-white/80 rounded-3xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.04)] space-y-4">
           <h2 className="text-lg font-extrabold text-[#1a1c1c] flex items-center gap-2">
-            <span className="material-symbols-outlined text-[20px]">manage_accounts</span>
+            <span className="material-symbols-outlined text-[20px]">
+              manage_accounts
+            </span>
             Agent Details & Actions
           </h2>
 
@@ -189,12 +227,18 @@ export default function ProfilePage() {
               <span className="font-semibold text-[#1a1c1c]">{clerkPhone}</span>
             </div>
             <div className="flex items-center justify-between py-2 border-b border-[#cfc4c5]/20">
-              <span className="text-[#7e7576] font-medium">Assigned Terminal</span>
-              <span className="font-semibold text-[#1a1c1c] text-right">{agent.station}</span>
+              <span className="text-[#7e7576] font-medium">
+                Assigned Terminal
+              </span>
+              <span className="font-semibold text-[#1a1c1c] text-right">
+                {agent.station}
+              </span>
             </div>
             <div className="flex items-center justify-between py-2">
               <span className="text-[#7e7576] font-medium">Member Since</span>
-              <span className="font-semibold text-[#1a1c1c]">{memberSince}</span>
+              <span className="font-semibold text-[#1a1c1c]">
+                {memberSince}
+              </span>
             </div>
           </div>
 
@@ -204,7 +248,9 @@ export default function ProfilePage() {
               className="flex items-center justify-between p-3 bg-[#f3f3f4] hover:bg-black hover:text-white rounded-2xl transition-all group text-sm font-semibold"
             >
               <div className="flex items-center gap-2.5">
-                <span className="material-symbols-outlined text-[20px]">settings</span>
+                <span className="material-symbols-outlined text-[20px]">
+                  settings
+                </span>
                 <span>Manage {agencyData.agencyName} Settings</span>
               </div>
               <span className="material-symbols-outlined text-[18px] group-hover:translate-x-1 transition-transform">
@@ -213,17 +259,18 @@ export default function ProfilePage() {
             </Link>
             <button
               type="button"
-              onClick={() => signOut({ redirectUrl: '/login' })}
+              onClick={() => signOut({ redirectUrl: "/login" })}
               className="flex w-full items-center justify-between p-3 bg-red-50 text-red-700 hover:bg-red-100 rounded-2xl transition-all group text-sm font-semibold"
             >
               <span className="flex items-center gap-2.5">
-                <span className="material-symbols-outlined text-[20px]">logout</span>
+                <span className="material-symbols-outlined text-[20px]">
+                  logout
+                </span>
                 Sign Out
               </span>
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );

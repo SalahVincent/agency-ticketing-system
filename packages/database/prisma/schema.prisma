@@ -43,6 +43,13 @@ enum ResponseType {
   SEAT_RESERVATION
 }
 
+enum NotificationType {
+  TICKET_SALE
+  CHECK_IN
+  INVENTORY_ALERT
+  SYSTEM
+}
+
 // Models
 
 model Agency {
@@ -51,10 +58,15 @@ model Agency {
   agencyCode       String          @unique
   hqLocation       String
   activeFleetCount String
+  clientSmsNotify  Boolean         @default(false)
+  autoInvoiceClient Boolean        @default(false)
+  serviceType      String?
+  terminalName     String?
   schedules        RouteSchedule[]
   tickets          Ticket[]
   agents           Agent[]
   botConfig        BotConfig?
+  notifications    Notification[]
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 }
@@ -64,6 +76,7 @@ model Agent {
   agencyId       String
   agency         Agency      @relation(fields: [agencyId], references: [id])
   agentCode      String      @unique
+  clerkUserId    String?     @unique
   name           String
   email          String      @unique
   password       String
@@ -145,4 +158,26 @@ model BotRule {
   replyTemplate String
   isActive      Boolean      @default(true)
   createdAt     DateTime     @default(now())
+}
+
+model Notification {
+  id          String             @id @default(uuid())
+  agencyId    String?            // null = platform-wide notice, visible to all agencies
+  agency      Agency?            @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  title       String
+  description String
+  createdAt   DateTime           @default(now())
+  reads       NotificationRead[]
+
+  @@index([agencyId, createdAt])
+}
+
+model NotificationRead {
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  clerkUserId    String
+  readAt         DateTime     @default(now())
+
+  @@id([notificationId, clerkUserId])
 }
