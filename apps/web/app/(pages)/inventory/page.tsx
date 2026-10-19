@@ -92,7 +92,7 @@ interface BotRule {
 
 export default function InventoryPage() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
-  const [selectedRoute, setSelectedRoute] = useState<string | null>("SCH-101");
+  const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const [showPreBookModal, setShowPreBookModal] = useState<boolean>(false);
   const [showCreateSessionModal, setShowCreateSessionModal] =
     useState<boolean>(false);
