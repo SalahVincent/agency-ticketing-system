@@ -39,7 +39,7 @@ export class AuthService {
       where: { email: dto.email },
     });
 
-    if (!agent) {
+    if (!agent || !agent.password) {
       throw new UnauthorizedException('Invalid credentials');
     }
 

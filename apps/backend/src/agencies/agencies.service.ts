@@ -3,9 +3,11 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { createClerkClient } from '@clerk/backend';
 import { BusType, Prisma, ScheduleStatus } from '@agency-ticketing/database';
+import type { CurrentAgentContext } from '../auth/clerk/current-agent.decorator';
 import { ClerkAuthGuard } from '../auth/clerk/clerk-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -35,6 +37,50 @@ export interface RegisteredAgency {
   agencyName: string;
 }
 
+export interface AgencyProfile {
+  agency: {
+    id: string;
+    name: string;
+    agencyCode: string;
+    hqLocation: string;
+    primaryRoutes: string;
+    activeFleetCount: string;
+    serviceType: string | null;
+  };
+  agent: {
+    name: string;
+    email: string;
+    phone: string;
+    agentCode: string;
+    role: string;
+    station: string;
+    shiftStatus: 'ON_DUTY' | 'OFF_DUTY';
+    memberSince: string;
+  } | null;
+}
+
+export interface RegisterAgencyInput {
+  agencyName?: string;
+  agentName?: string;
+  agentPhone?: string;
+  hqLocation?: string;
+  primaryRoutes?: string;
+  activeFleetCount?: string;
+  serviceType?: string;
+  terminalName?: string;
+}
+
+export interface UpdateAgencyProfileInput {
+  agencyName?: string;
+  hqLocation?: string;
+  primaryRoutes?: string;
+  activeFleetCount?: string;
+  serviceType?: string;
+  agentPhone?: string;
+  station?: string;
+  shiftStatus?: 'ON_DUTY' | 'OFF_DUTY';
+}
+
 export interface CreateAgencyScheduleInput {
   origin: string;
   destination: string;
@@ -55,7 +101,7 @@ export class AgenciesService {
 
   async registerAgencyForClerkUser(
     clerkUserId: string,
-    requestedAgencyName?: string,
+    input: RegisterAgencyInput = {},
   ): Promise<RegisteredAgency> {
     const secretKey = process.env.CLERK_SECRET_KEY;
     if (!secretKey) {
@@ -64,6 +110,9 @@ export class AgenciesService {
 
     const clerk = createClerkClient({ secretKey });
     const user = await clerk.users.getUser(clerkUserId);
+    if (user.primaryEmailAddress?.verification?.status !== 'verified') {
+      throw new BadRequestException('Verify your email address before linking an agent profile.');
+    }
     const linkedAgencyId = user.publicMetadata.agencyId;
 
     if (typeof linkedAgencyId === 'string' && linkedAgencyId) {
@@ -75,6 +124,8 @@ export class AgenciesService {
         throw new ConflictException('This account is linked to an unknown agency');
       }
 
+      await this.updateAgencyFromRegistration(existingAgency.id, input);
+      await this.ensureAgentProfile(user, existingAgency.id, input);
       this.clerkAuthGuard.invalidateUserCache(clerkUserId);
       return { agencyId: existingAgency.id, agencyName: existingAgency.name };
     }
@@ -87,6 +138,8 @@ export class AgenciesService {
       });
 
       if (existingAgent) {
+        await this.updateAgencyFromRegistration(existingAgent.agency.id, input);
+        await this.ensureAgentProfile(user, existingAgent.agency.id, input);
         await clerk.users.updateUserMetadata(clerkUserId, {
           publicMetadata: { ...user.publicMetadata, agencyId: existingAgent.agency.id },
         });
@@ -100,7 +153,7 @@ export class AgenciesService {
 
     const unsafeAgencyName = user.unsafeMetadata.agencyName;
     const emailName = primaryEmail?.split('@')[0].replace(/[._-]+/g, ' ').trim();
-    const agencyName = requestedAgencyName?.trim() ||
+    const agencyName = input.agencyName?.trim() ||
       (typeof unsafeAgencyName === 'string' ? unsafeAgencyName.trim() : '') ||
       (user.fullName ? `${user.fullName}'s Agency` : '') ||
       (emailName ? `${emailName} Agency` : 'New Agency');
@@ -112,11 +165,16 @@ export class AgenciesService {
       create: {
         name: agencyName,
         agencyCode,
-        hqLocation: 'Not set',
-        activeFleetCount: '0',
+        hqLocation: input.hqLocation?.trim() || 'Not set',
+        primaryRoutes: input.primaryRoutes?.trim() || 'Not set',
+        activeFleetCount: input.activeFleetCount?.trim() || '0',
+        serviceType: input.serviceType?.trim() || null,
+        terminalName: input.terminalName?.trim() || input.hqLocation?.trim() || null,
       },
       select: { id: true, name: true },
     });
+
+    await this.ensureAgentProfile(user, agency.id, input);
 
     try {
       await clerk.users.updateUserMetadata(clerkUserId, {
@@ -130,6 +188,207 @@ export class AgenciesService {
 
     this.clerkAuthGuard.invalidateUserCache(clerkUserId);
     return { agencyId: agency.id, agencyName: agency.name };
+  }
+
+  private async updateAgencyFromRegistration(
+    agencyId: string,
+    input: RegisterAgencyInput,
+  ): Promise<void> {
+    const data: Prisma.AgencyUpdateInput = {};
+    if (input.agencyName?.trim()) data.name = input.agencyName.trim();
+    if (input.hqLocation?.trim()) data.hqLocation = input.hqLocation.trim();
+    if (input.primaryRoutes?.trim()) data.primaryRoutes = input.primaryRoutes.trim();
+    if (input.activeFleetCount?.trim()) data.activeFleetCount = input.activeFleetCount.trim();
+    if (input.serviceType?.trim()) data.serviceType = input.serviceType.trim();
+    if (input.terminalName?.trim()) data.terminalName = input.terminalName.trim();
+    if (Object.keys(data).length) {
+      await this.prisma.agency.update({ where: { id: agencyId }, data });
+    }
+  }
+
+  private async ensureAgentProfile(
+    user: any,
+    agencyId: string,
+    input: RegisterAgencyInput,
+  ): Promise<void> {
+    const email = user.primaryEmailAddress?.emailAddress;
+    if (!email) throw new BadRequestException('A verified email is required for the agent profile.');
+
+    const linkedAgent = await this.prisma.agent.findUnique({
+      where: { clerkUserId: user.id },
+    });
+    const existingAgent = linkedAgent ?? await this.prisma.agent.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+    });
+
+    if (existingAgent && existingAgent.agencyId !== agencyId) {
+      throw new ConflictException('This email is already assigned to another agency.');
+    }
+    const name = input.agentName?.trim() || existingAgent?.name || user.fullName || email.split('@')[0];
+    const phone = input.agentPhone?.trim() || existingAgent?.phone || user.primaryPhoneNumber?.phoneNumber || '';
+    const station = input.terminalName?.trim() || input.hqLocation?.trim() || existingAgent?.station || 'Not set';
+
+    if (existingAgent) {
+      await this.prisma.agent.update({
+        where: { id: existingAgent.id },
+        data: {
+          clerkUserId: user.id,
+          ...(input.agentName?.trim() ? { name } : {}),
+          ...(input.agentPhone?.trim() ? { phone } : {}),
+          ...(input.terminalName?.trim() || input.hqLocation?.trim() ? { station } : {}),
+        },
+      });
+      return;
+    }
+
+    await this.prisma.agent.create({
+      data: {
+        agencyId,
+        agentCode: `CLERK-${user.id.toUpperCase()}`,
+        clerkUserId: user.id,
+        name,
+        email,
+        password: null,
+        phone,
+        role: 'AGENCY_ADMIN',
+        station,
+      },
+    });
+  }
+
+  async getProfile(agent: CurrentAgentContext): Promise<AgencyProfile> {
+    const [agency, clerkAgent] = await Promise.all([
+      this.prisma.agency.findUnique({
+        where: { id: agent.agencyId },
+        select: {
+          id: true,
+          name: true,
+          agencyCode: true,
+          hqLocation: true,
+          primaryRoutes: true,
+          activeFleetCount: true,
+          serviceType: true,
+        },
+      }),
+      this.prisma.agent.findUnique({
+        where: { clerkUserId: agent.clerkUserId },
+        select: {
+          name: true,
+          email: true,
+          phone: true,
+          agentCode: true,
+          role: true,
+          station: true,
+          shiftStatus: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    if (!agency) throw new NotFoundException('Agency profile not found.');
+    return {
+      agency,
+      agent: clerkAgent
+        ? { ...clerkAgent, memberSince: clerkAgent.createdAt.toISOString() }
+        : null,
+    };
+  }
+
+  async updateProfile(
+    currentAgent: CurrentAgentContext,
+    input: UpdateAgencyProfileInput,
+  ): Promise<AgencyProfile> {
+    const agent = await this.prisma.agent.findUnique({
+      where: { clerkUserId: currentAgent.clerkUserId },
+      select: { id: true, agencyId: true },
+    });
+    if (!agent || agent.agencyId !== currentAgent.agencyId) {
+      throw new NotFoundException('Agent profile not found. Please complete registration again.');
+    }
+
+    const agencyData: Prisma.AgencyUpdateInput = {};
+    const setRequiredText = (
+      key: 'name' | 'hqLocation' | 'primaryRoutes' | 'activeFleetCount',
+      value: string | undefined,
+    ) => {
+      if (value === undefined) return;
+      const cleaned = value.trim();
+      if (!cleaned || cleaned.length > 160) {
+        throw new BadRequestException('Required profile fields must contain 1 to 160 characters.');
+      }
+      agencyData[key] = cleaned;
+    };
+
+    setRequiredText('name', input.agencyName);
+    setRequiredText('hqLocation', input.hqLocation);
+    setRequiredText('primaryRoutes', input.primaryRoutes);
+    setRequiredText('activeFleetCount', input.activeFleetCount);
+    if (input.serviceType !== undefined) {
+      const value = input.serviceType.trim();
+      if (value.length > 160) throw new BadRequestException('Service type must be 160 characters or fewer.');
+      agencyData.serviceType = value || null;
+    }
+
+    const agentData: Prisma.AgentUpdateInput = {};
+    if (input.agentPhone !== undefined) {
+      const value = input.agentPhone.trim();
+      if (!value || value.length > 40) throw new BadRequestException('Enter a valid phone number.');
+      agentData.phone = value;
+    }
+    if (input.station !== undefined) {
+      const value = input.station.trim();
+      if (!value || value.length > 160) throw new BadRequestException('Assigned terminal cannot be empty.');
+      agentData.station = value;
+    }
+    if (input.shiftStatus !== undefined) {
+      if (input.shiftStatus !== 'ON_DUTY' && input.shiftStatus !== 'OFF_DUTY') {
+        throw new BadRequestException('Choose a valid duty status.');
+      }
+      agentData.shiftStatus = input.shiftStatus;
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (Object.keys(agencyData).length) {
+        await tx.agency.update({ where: { id: currentAgent.agencyId }, data: agencyData });
+      }
+      if (Object.keys(agentData).length) {
+        await tx.agent.update({ where: { id: agent.id }, data: agentData });
+      }
+    });
+
+    return this.getProfile(currentAgent);
+  }
+
+  async deleteMyAccount(currentAgent: CurrentAgentContext): Promise<{ success: true }> {
+    const secretKey = process.env.CLERK_SECRET_KEY;
+    if (!secretKey) throw new InternalServerErrorException('CLERK_SECRET_KEY is not configured');
+
+    const agent = await this.prisma.agent.findUnique({
+      where: { clerkUserId: currentAgent.clerkUserId },
+      select: { id: true },
+    });
+    if (!agent) throw new NotFoundException('Agent profile not found.');
+
+    // Keep the agency's records, but detach this agent so a verified account
+    // recreated with the same email can safely claim the existing profile.
+    await this.prisma.agent.update({
+      where: { id: agent.id },
+      data: { clerkUserId: null },
+    });
+
+    try {
+      const clerk = createClerkClient({ secretKey });
+      await clerk.users.deleteUser(currentAgent.clerkUserId);
+    } catch {
+      await this.prisma.agent.updateMany({
+        where: { id: agent.id, clerkUserId: null },
+        data: { clerkUserId: currentAgent.clerkUserId },
+      });
+      throw new InternalServerErrorException('Could not delete the account. Please try again.');
+    }
+
+    this.clerkAuthGuard.invalidateUserCache(currentAgent.clerkUserId);
+    return { success: true };
   }
 
   async getActiveAgencies(): Promise<ActiveAgencySummary[]> {
