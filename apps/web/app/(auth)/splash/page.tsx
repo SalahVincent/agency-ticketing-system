@@ -1,18 +1,20 @@
-'use client';
+"use client";
 
-import { useRouter } from 'next/navigation';
-import SplashScreen from '@/components/auth/SplashScreen';
+import { useRouter } from "next/navigation";
+import SplashScreen from "@/components/auth/SplashScreen";
 
 export default function SplashPage() {
   const router = useRouter();
 
   const handleFinish = () => {
-    const hasOnboarded = typeof window !== 'undefined' && localStorage.getItem('has_onboarded') === 'true';
+    const hasOnboarded =
+      typeof window !== "undefined" &&
+      localStorage.getItem("has_onboarded") === "true";
 
     if (hasOnboarded) {
-      router.replace('/login');
+      router.replace("/login");
     } else {
-      router.replace('/onboarding');
+      router.replace("/onboarding");
     }
   };
 

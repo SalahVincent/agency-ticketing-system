@@ -13,6 +13,12 @@ export default function RegisterPage() {
   const [formData, setFormData] = useState({
     agencyName: "",
     agentName: "",
+    agentPhone: "",
+    hqLocation: "",
+    primaryRoutes: "",
+    serviceType: "",
+    activeFleetCount: "",
+    terminalName: "",
     email: "",
     password: "",
   });
@@ -35,6 +41,13 @@ export default function RegisterPage() {
     try {
       await postApi("/agencies/register", getToken, {
         agencyName: formData.agencyName,
+        agentName: formData.agentName,
+        agentPhone: formData.agentPhone,
+        hqLocation: formData.hqLocation,
+        primaryRoutes: formData.primaryRoutes,
+        serviceType: formData.serviceType,
+        activeFleetCount: formData.activeFleetCount,
+        terminalName: formData.terminalName,
       });
       router.replace("/dashboard");
     } catch (error) {
@@ -208,6 +221,89 @@ export default function RegisterPage() {
                     className="w-full text-xs font-medium text-[#1a1c1c] bg-transparent outline-none placeholder:text-[#cfc4c5]"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#1a1c1c] mb-1">
+                  Agent Phone Number
+                </label>
+                <input
+                  type="tel"
+                  required
+                  autoComplete="tel"
+                  placeholder="+237 6XX XXX XXX"
+                  value={formData.agentPhone}
+                  onChange={(event) => setFormData({ ...formData, agentPhone: event.target.value })}
+                  className="w-full bg-white/80 border border-gray-200 rounded-2xl px-4 py-2.5 text-xs font-medium text-[#1a1c1c] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#1a1c1c] mb-1">
+                  Agency Headquarters / Main Station
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Douala Central Terminal"
+                  value={formData.hqLocation}
+                  onChange={(event) => setFormData({ ...formData, hqLocation: event.target.value })}
+                  className="w-full bg-white/80 border border-gray-200 rounded-2xl px-4 py-2.5 text-xs font-medium text-[#1a1c1c] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#1a1c1c] mb-1">
+                  Primary Routes / Network
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Douala–Yaoundé, Bafoussam–Bamenda"
+                  value={formData.primaryRoutes}
+                  onChange={(event) => setFormData({ ...formData, primaryRoutes: event.target.value })}
+                  className="w-full bg-white/80 border border-gray-200 rounded-2xl px-4 py-2.5 text-xs font-medium text-[#1a1c1c] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#1a1c1c] mb-1">
+                  Agent&apos;s Assigned Terminal <span className="font-normal text-[#7e7576]">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Defaults to the agency main station"
+                  value={formData.terminalName}
+                  onChange={(event) => setFormData({ ...formData, terminalName: event.target.value })}
+                  className="w-full bg-white/80 border border-gray-200 rounded-2xl px-4 py-2.5 text-xs font-medium text-[#1a1c1c] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#1a1c1c] mb-1">
+                  Service Type <span className="font-normal text-[#7e7576]">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Intercity passenger transport"
+                  value={formData.serviceType}
+                  onChange={(event) => setFormData({ ...formData, serviceType: event.target.value })}
+                  className="w-full bg-white/80 border border-gray-200 rounded-2xl px-4 py-2.5 text-xs font-medium text-[#1a1c1c] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#1a1c1c] mb-1">
+                  Fleet Size <span className="font-normal text-[#7e7576]">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Number of buses"
+                  value={formData.activeFleetCount}
+                  onChange={(event) => setFormData({ ...formData, activeFleetCount: event.target.value })}
+                  className="w-full bg-white/80 border border-gray-200 rounded-2xl px-4 py-2.5 text-xs font-medium text-[#1a1c1c] outline-none"
+                />
               </div>
 
               <div>
