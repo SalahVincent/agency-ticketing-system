@@ -71,6 +71,7 @@ export interface RegisterAgencyInput {
 }
 
 export interface UpdateAgencyProfileInput {
+  agentName?: string;
   agencyName?: string;
   hqLocation?: string;
   primaryRoutes?: string;
@@ -330,6 +331,11 @@ export class AgenciesService {
     }
 
     const agentData: Prisma.AgentUpdateInput = {};
+    if (input.agentName !== undefined) {
+      const value = input.agentName.trim();
+      if (!value || value.length > 160) throw new BadRequestException('Agent name must contain 1 to 160 characters.');
+      agentData.name = value;
+    }
     if (input.agentPhone !== undefined) {
       const value = input.agentPhone.trim();
       if (!value || value.length > 40) throw new BadRequestException('Enter a valid phone number.');
