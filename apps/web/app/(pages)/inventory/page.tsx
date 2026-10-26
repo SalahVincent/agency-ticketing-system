@@ -75,11 +75,16 @@ const normalizeSchedule = (item: any): RouteSchedule => {
   };
 };
 
-interface ClientProfile {
-  id: string;
-  name: string;
-  phone: string;
-  companyName?: string;
+interface AgencyIdentity {
+  agency: { name: string; agencyCode: string; hqLocation: string };
+  agent: { station: string } | null;
+}
+
+interface BookingResult {
+  ticketId: string;
+  seatNo: string;
+  amount: number;
+  qrCode: string;
 }
 
 interface BotRule {
@@ -98,17 +103,15 @@ export default function InventoryPage() {
     useState<boolean>(false);
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
 
-  const [stationAccount] = useState({
-    agencyName: "General Express Voyage",
-    stationBranch: "Yaoundé Central Terminal (Mvan)",
-    accountId: "CMW-YDE-001",
-  });
+  const [agencyIdentity, setAgencyIdentity] = useState<AgencyIdentity | null>(null);
+  const [bookingResult, setBookingResult] = useState<BookingResult | null>(null);
+  const [isBooking, setIsBooking] = useState(false);
+  const [bookingError, setBookingError] = useState("");
 
   const [activeTab, setActiveTab] = useState<"inventory" | "bot_creator">(
     "inventory",
   );
 
-  const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
 
@@ -143,6 +146,12 @@ export default function InventoryPage() {
   }, [getToken, isLoaded, isSignedIn]);
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    fetchApi<AgencyIdentity>("/agencies/profile", getToken)
+      .then(setAgencyIdentity)
+      .catch((error) => console.error("Failed to load agency details", error));
+  }, [getToken, isLoaded, isSignedIn]);
+  useEffect(() => {
     if (!selectedRoute) {
       setCurrentBookedSeatNumbers([]);
       return;
@@ -171,41 +180,25 @@ export default function InventoryPage() {
     loadBookedSeats();
   }, [getToken, isLoaded, isSignedIn, selectedRoute]);
 
-  const [newOrigin, setNewOrigin] = useState("Yaoundé");
-  const [newDestination, setNewDestination] = useState("Douala");
-  const [newDepartureTime, setNewDepartureTime] = useState("08:00 AM");
+  const [newOrigin, setNewOrigin] = useState("");
+  const [newDestination, setNewDestination] = useState("");
+  const [newDepartureTime, setNewDepartureTime] = useState("");
   const [newBusNumber, setNewBusNumber] = useState("");
   const [newBusName, setNewBusName] = useState("");
   const [newBusType, setNewBusType] = useState<BusType>("vip_2x2");
-  const [newPrice, setNewPrice] = useState("6000");
+  const [newPrice, setNewPrice] = useState("");
 
-  const [botPhoneNumber, setBotPhoneNumber] = useState("+237 670 000 111");
-  const [botStatus, setBotStatus] = useState<"active" | "paused" | "offline">(
-    "active",
-  );
-  const [welcomeMessage, setWelcomeMessage] = useState(
-    "Hello! Welcome to CAMEWEGO Booking Bot for Yaoundé Station. Reply with 1 for schedules, 2 to reserve a seat, or 3 for assistance.",
-  );
+  const [botPhoneNumber, setBotPhoneNumber] = useState("");
+  const [botStatus, setBotStatus] = useState<"active" | "paused" | "offline">("offline");
+  const stationName = agencyIdentity?.agent?.station || agencyIdentity?.agency.hqLocation || "Agency terminal";
+  const [welcomeMessage, setWelcomeMessage] = useState("");
+  const [botRules, setBotRules] = useState<BotRule[]>([]);
 
-  const [botRules, setBotRules] = useState<BotRule[]>([
-    {
-      id: "RULE-01",
-      keyword: "1, schedule, routes",
-      responseType: "schedule_lookup",
-      replyTemplate:
-        "Today's departures from Yaoundé:\n- Yaoundé ➔ Douala (10:30 AM)\n- Yaoundé ➔ Bafoussam (01:00 PM)",
-      isActive: true,
-    },
-    {
-      id: "RULE-02",
-      keyword: "2, book, reserve",
-      responseType: "seat_reservation",
-      replyTemplate:
-        "To reserve a seat, send your Full Name, preferred Destination, and Departure Time.",
-      isActive: true,
-    },
-  ]);
-
+  useEffect(() => {
+    if (agencyIdentity && !welcomeMessage) {
+      setWelcomeMessage(`Hello! Welcome to ${agencyIdentity.agency.name} at ${stationName}. Reply with 1 for schedules, 2 to reserve a seat, or 3 for assistance.`);
+    }
+  }, [agencyIdentity, stationName, welcomeMessage]);
   const [newKeyword, setNewKeyword] = useState("");
   const [newResponseType, setNewResponseType] = useState<
     "auto_reply" | "seat_reservation" | "schedule_lookup"
@@ -217,21 +210,9 @@ export default function InventoryPage() {
     { sender: "user" | "bot"; text: string }[]
   >([{ sender: "bot", text: welcomeMessage }]);
 
-  const agencyClients: ClientProfile[] = [
-    {
-      id: "CLI-01",
-      name: "Paul Atanga",
-      phone: "+237 670 112 233",
-      companyName: "Acapella Logistics",
-    },
-    { id: "CLI-02", name: "Grace Manga", phone: "+237 699 445 566" },
-    {
-      id: "CLI-03",
-      name: "Dr. Samuel Ngu",
-      phone: "+237 655 889 900",
-      companyName: "Ngu Medical Center",
-    },
-  ];
+  useEffect(() => {
+    if (welcomeMessage) setChatLog([{ sender: "bot", text: welcomeMessage }]);
+  }, [welcomeMessage]);
 
   const currentBus: RouteSchedule = schedules.find(
     (s) => s.id === selectedRoute,
@@ -268,7 +249,7 @@ export default function InventoryPage() {
 
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newBusNumber || !newBusName) return;
+    if (!newOrigin.trim() || !newDestination.trim() || !newDepartureTime.trim() || !newBusNumber.trim() || !newBusName.trim() || !Number(newPrice)) return;
 
     try {
       const busDetails = getBusDetails(newBusType);
@@ -279,7 +260,7 @@ export default function InventoryPage() {
         busNumber: newBusNumber,
         busName: newBusName,
         busType: newBusType,
-        pricePerSeat: Number(newPrice) || 5000,
+        pricePerSeat: Number(newPrice),
         totalSeats: busDetails.capacity,
       };
 
@@ -318,44 +299,38 @@ export default function InventoryPage() {
     }
   };
 
-  const handleSelectClientOption = (
-    e: React.ChangeEvent<HTMLSelectElement>,
-  ) => {
-    const val = e.target.value;
-    setSelectedClientId(val);
-
-    if (val === "NEW") {
-      setClientName("");
-      setClientPhone("");
-    } else {
-      const found = agencyClients.find((c) => c.id === val);
-      if (found) {
-        setClientName(found.name);
-        setClientPhone(found.phone);
-      }
-    }
-  };
-
-  const handleSeatClick = (seatNum: number) => {
+  const openBookingModal = (seatNum: number | null = null) => {
     setSelectedSeat(seatNum);
+    setBookingResult(null);
+    setBookingError("");
+    setClientName("");
+    setClientPhone("");
     setShowPreBookModal(true);
   };
 
-  const handleConfirmBooking = (e: React.FormEvent) => {
+  const handleSeatClick = (seatNum: number) => openBookingModal(seatNum);
+
+  const handleConfirmBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientName || !selectedSeat) return;
-
-    alert(
-      `Pre-Booking Reserved for Client!\n\nClient Name: ${clientName}\nPhone: ${clientPhone}\nBus Name: "${currentBus.busName}" (${currentBus.busNumber})\nSeat: #${selectedSeat}\nRoute: ${currentBus.origin} ➔ ${currentBus.destination}\nStation: ${stationAccount.stationBranch}\n\nE-Ticket dispatched via WhatsApp.`,
-    );
-
-    setShowPreBookModal(false);
-    setSelectedClientId("");
-    setClientName("");
-    setClientPhone("");
-    setSelectedSeat(null);
+    if (!clientName.trim() || !clientPhone.trim() || !currentBus.id) return;
+    setIsBooking(true);
+    setBookingError("");
+    try {
+      const result = await fetchApi<BookingResult>("/orders/book", getToken, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scheduleId: currentBus.id, seatNum: selectedSeat, passengerName: clientName, phone: clientPhone }),
+      });
+      setBookingResult(result);
+      setSelectedSeat(Number(result.seatNo));
+      setCurrentBookedSeatNumbers((seats) => [...new Set([...seats, Number(result.seatNo)])].sort((a, b) => a - b));
+      setSchedules((items) => items.map((item) => item.id === currentBus.id ? { ...item, bookedSeats: item.bookedSeats + 1 } : item));
+    } catch (error) {
+      setBookingError(error instanceof Error ? error.message : "Unable to create the ticket.");
+    } finally {
+      setIsBooking(false);
+    }
   };
-
   const handleAddRule = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newKeyword || !newReplyTemplate) return;
@@ -426,14 +401,14 @@ export default function InventoryPage() {
                   Station Account
                 </span>
                 <span className="text-[9px] sm:text-[10px] bg-emerald-800 text-emerald-200 px-2 py-0.5 rounded-full font-mono">
-                  {stationAccount.accountId}
+                  {agencyIdentity?.agency.agencyCode || "Loading agency…"}
                 </span>
               </div>
               <h2 className="text-lg sm:text-2xl font-bold tracking-tight truncate">
-                {stationAccount.agencyName}
+                {agencyIdentity?.agency.name || "Loading agency…"}
               </h2>
               <p className="text-xs text-emerald-200/80 mt-0.5 truncate">
-                {stationAccount.stationBranch}
+                {stationName}
               </p>
             </div>
           </div>
@@ -495,8 +470,9 @@ export default function InventoryPage() {
 
                 <button
                   type="button"
-                  onClick={() => setShowPreBookModal(true)}
-                  className="flex-1 sm:flex-initial bg-black text-white text-xs sm:text-sm font-semibold px-3.5 sm:px-4 py-2.5 rounded-full hover:scale-[1.02] active:scale-95 transition-transform flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                  onClick={() => openBookingModal()}
+                  disabled={schedules.length === 0}
+                  className="flex-1 sm:flex-initial bg-black text-white text-xs sm:text-sm font-semibold px-3.5 sm:px-4 py-2.5 rounded-full hover:scale-[1.02] active:scale-95 transition-transform flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <span className="material-symbols-outlined text-base">
                     person_add
@@ -654,7 +630,7 @@ export default function InventoryPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
                   <div>
                     <h2 className="text-base sm:text-lg font-bold text-[#1a1c1c] flex items-center gap-2 flex-wrap">
-                      <span>WhatsApp Bot — {stationAccount.stationBranch}</span>
+                      <span>WhatsApp Bot — {stationName}</span>
                       <span className="text-[10px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
                         {botStatus.toUpperCase()}
                       </span>
@@ -915,7 +891,7 @@ export default function InventoryPage() {
                     Create Travel Session
                   </h3>
                   <p className="text-xs text-gray-500">
-                    {stationAccount.stationBranch}
+                    {stationName}
                   </p>
                 </div>
                 <button
@@ -933,37 +909,14 @@ export default function InventoryPage() {
                     <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
                       Origin
                     </label>
-                    <select
-                      value={newOrigin}
-                      onChange={(e) => setNewOrigin(e.target.value)}
-                      className="w-full mt-1 bg-slate-50 border border-slate-200 text-xs sm:text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-black outline-none font-medium"
-                    >
-                      <option value="Yaoundé">Yaoundé</option>
-                      <option value="Douala">Douala</option>
-                      <option value="Bafoussam">Bafoussam</option>
-                      <option value="Bamenda">Bamenda</option>
-                      <option value="Kribi">Kribi</option>
-                      <option value="Garoua">Garoua</option>
-                    </select>
+                    <input type="text" required value={newOrigin} onChange={(e) => setNewOrigin(e.target.value)} placeholder="Origin city" className="w-full mt-1 bg-slate-50 border border-slate-200 text-xs sm:text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-black outline-none font-medium" />
                   </div>
 
                   <div>
                     <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
                       Destination
                     </label>
-                    <select
-                      value={newDestination}
-                      onChange={(e) => setNewDestination(e.target.value)}
-                      className="w-full mt-1 bg-slate-50 border border-slate-200 text-xs sm:text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-black outline-none font-medium"
-                    >
-                      <option value="Douala">Douala</option>
-                      <option value="Yaoundé">Yaoundé</option>
-                      <option value="Bafoussam">Bafoussam</option>
-                      <option value="Bamenda">Bamenda</option>
-                      <option value="Kribi">Kribi</option>
-                      <option value="Garoua">Garoua</option>
-                      <option value="Ngaoundéré">Ngaoundéré</option>
-                    </select>
+                    <input type="text" required value={newDestination} onChange={(e) => setNewDestination(e.target.value)} placeholder="Destination city" className="w-full mt-1 bg-slate-50 border border-slate-200 text-xs sm:text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-black outline-none font-medium" />
                   </div>
                 </div>
 
@@ -1091,28 +1044,20 @@ export default function InventoryPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleConfirmBooking} className="space-y-3.5">
-                <div>
-                  <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
-                    Select Client
-                  </label>
-                  <select
-                    value={selectedClientId}
-                    onChange={handleSelectClientOption}
-                    className="w-full mt-1 bg-slate-50 border border-slate-200 text-xs sm:text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-black outline-none font-medium"
-                  >
-                    <option value="">-- Choose Existing Client --</option>
-                    {agencyClients.map((client) => (
-                      <option key={client.id} value={client.id}>
-                        {client.name}{" "}
-                        {client.companyName ? `(${client.companyName})` : ""} —{" "}
-                        {client.phone}
-                      </option>
-                    ))}
-                    <option value="NEW">+ Register New Profile</option>
-                  </select>
+              {bookingResult ? (
+                <div className="space-y-4 text-center">
+                  <div className="mx-auto w-fit rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                    <img src={bookingResult.qrCode} alt={`QR code for ticket ${bookingResult.ticketId}`} className="h-44 w-44" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-emerald-800">Ticket created successfully</p>
+                    <p className="mt-1 text-xs text-[#4c4546]">{bookingResult.ticketId} · Seat {bookingResult.seatNo} · {bookingResult.amount.toLocaleString()} FCFA</p>
+                  </div>
+                  <a href={bookingResult.qrCode} download={`${bookingResult.ticketId}.png`} className="inline-flex rounded-xl bg-black px-4 py-2.5 text-xs font-semibold text-white">Download ticket QR</a>
+                  <button type="button" onClick={() => setShowPreBookModal(false)} className="ml-2 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-[#4c4546]">Done</button>
                 </div>
-
+              ) : <form onSubmit={handleConfirmBooking} className="space-y-3.5">
+                {bookingError && <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{bookingError}</p>}
                 <div>
                   <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
                     Full Name
@@ -1170,11 +1115,12 @@ export default function InventoryPage() {
 
                 <button
                   type="submit"
-                  className="w-full bg-black text-white font-semibold py-3 rounded-full text-xs sm:text-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md mt-2"
+                  disabled={isBooking || !currentBus.id}
+                  className="w-full bg-black text-white font-semibold py-3 rounded-full text-xs sm:text-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md mt-2 disabled:opacity-50"
                 >
-                  Confirm & Dispatch Ticket
+                  {isBooking ? "Creating ticket…" : "Confirm & Create Ticket"}
                 </button>
-              </form>
+              </form>}
             </div>
           </div>
         )}

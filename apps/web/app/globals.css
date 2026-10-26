@@ -3,6 +3,11 @@
 * {
   font-family: "Inter"
 }
+
+@keyframes mobileMenuFade {
+  from { opacity: 0; transform: translateY(-0.35rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
 /* 
 :root {
   --background: #ffffff;

@@ -60,7 +60,7 @@ export default function Navbar() {
   return (
     <>
       {/* Top Header Navbar */}
-      <header className="w-full sticky top-0 z-40 max-w-[1440px] mx-auto px-4 sm:px-8 py-4 inset-0 backdrop-blur-md [mask-image:linear-gradient(to_bottom,black_60%,transparent_100%)]">
+      <header className={`w-full sticky top-0 z-[60] max-w-[1440px] mx-auto px-4 sm:px-8 py-4 backdrop-blur-md ${isMobileMenuOpen ? "" : "[mask-image:linear-gradient(to_bottom,black_60%,transparent_100%)]"}`}>
         <nav className="rounded-full px-5 sm:px-8 py-3 flex items-center justify-between relative z-50">
           {/* Brand Logo */}
           <Link
@@ -178,7 +178,7 @@ export default function Navbar() {
 
         {/* Mobile Dropdown Menu Drawer */}
         {isMobileMenuOpen && (
-          <div className="md:hidden mt-3 bg-white/95 backdrop-blur-2xl rounded-3xl p-5 shadow-[0_15px_35px_rgba(0,0,0,0.12)] border border-white/80 flex flex-col gap-1.5 transition-all duration-200 relative z-50">
+          <div className="md:hidden mt-3 max-h-[calc(100dvh-7rem)] overflow-y-auto bg-white rounded-3xl p-5 shadow-[0_15px_35px_rgba(0,0,0,0.18)] border border-[#cfc4c5]/50 flex flex-col gap-1.5 relative z-[60] animate-[mobileMenuFade_160ms_ease-out]">
             <div className="text-[11px] font-bold text-[#7e7576] uppercase tracking-wider px-3 pt-1 pb-2">
               Navigation Tabs
             </div>

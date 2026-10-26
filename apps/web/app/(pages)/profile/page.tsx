@@ -4,7 +4,6 @@ import React, { useEffect, useState } from "react";
 import { useAuth, useClerk, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { fetchApi } from "@/lib/api";
-import AccountSecurity from "@/components/profile/AccountSecurity";
 
 interface AgencyProfile {
   agency: {
@@ -29,6 +28,7 @@ interface AgencyProfile {
 }
 
 type EditableProfile = {
+  agentName: string;
   agencyName: string;
   hqLocation: string;
   primaryRoutes: string;
@@ -48,7 +48,6 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUpdatingDuty, setIsUpdatingDuty] = useState(false);
-  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -60,6 +59,7 @@ export default function ProfilePage() {
         if (!active) return;
         setProfile(data);
         setForm({
+          agentName: data.agent?.name ?? "",
           agencyName: data.agency.name,
           hqLocation: data.agency.hqLocation,
           primaryRoutes: data.agency.primaryRoutes,
@@ -84,7 +84,8 @@ export default function ProfilePage() {
     user?.fullName ||
     [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
     "Agent";
-  const clerkInitials = clerkName
+  const profileName = profile?.agent?.name || clerkName;
+  const clerkInitials = profileName
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
@@ -110,6 +111,7 @@ export default function ProfilePage() {
   const cancelEdit = () => {
     if (!profile) return;
     setForm({
+      agentName: profile.agent?.name ?? "",
       agencyName: profile.agency.name,
       hqLocation: profile.agency.hqLocation,
       primaryRoutes: profile.agency.primaryRoutes,
@@ -161,22 +163,6 @@ export default function ProfilePage() {
       setError(dutyError instanceof Error ? dutyError.message : "Could not update duty status.");
     } finally {
       setIsUpdatingDuty(false);
-    }
-  };
-
-  const deleteAccount = async () => {
-    const confirmed = window.confirm(
-      "Delete your account? You will lose access immediately. Agency records and ticket history will be retained, and this action cannot be undone.",
-    );
-    if (!confirmed) return;
-    setIsDeletingAccount(true);
-    setError("");
-    try {
-      await fetchApi<{ success: true }>("/agencies/profile/account", getToken, { method: "DELETE" });
-      await signOut({ redirectUrl: "/login" });
-    } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Could not delete your account.");
-      setIsDeletingAccount(false);
     }
   };
 
@@ -237,7 +223,7 @@ export default function ProfilePage() {
                 </div>
 
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1a1c1c] tracking-tight">
-                  {clerkName}
+                  {profileName}
                 </h1>
                 <p className="text-sm font-semibold text-[#7e7576]">
                   {(profile.agent?.role || "Agency Operator").replaceAll("_", " ")}
@@ -379,6 +365,10 @@ export default function ProfilePage() {
 
           <div className="space-y-3 text-sm pb-2">
             <div className="flex items-center justify-between py-2 border-b border-[#cfc4c5]/20">
+              <span className="text-[#7e7576] font-medium">Agent Name</span>
+              {profileValue("agentName", profile.agent?.name || clerkName)}
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-[#cfc4c5]/20">
               <span className="text-[#7e7576] font-medium">Email Address</span>
               <span className="font-semibold text-[#1a1c1c]">{clerkEmail}</span>
             </div>
@@ -439,18 +429,6 @@ export default function ProfilePage() {
         </div>
       )}
       </form>
-      <AccountSecurity />
-      <section className="rounded-3xl border border-rose-200 bg-rose-50/70 p-6 shadow-[0_10px_30px_rgba(0,0,0,0.03)]">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-base font-bold text-rose-900">Delete account</h2>
-            <p className="mt-1 max-w-2xl text-sm text-rose-800/80">Your sign-in account will be deleted. Agency details, tickets, and history will remain available to the agency.</p>
-          </div>
-          <button type="button" onClick={deleteAccount} disabled={isDeletingAccount} className="shrink-0 rounded-xl bg-rose-700 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-rose-800 disabled:opacity-60">
-            {isDeletingAccount ? "Deleting account…" : "Delete My Account"}
-          </button>
-        </div>
-      </section>
     </div>
   );
 }

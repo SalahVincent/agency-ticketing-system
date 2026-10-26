@@ -1,11 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
+import AccountSecurity from "@/components/profile/AccountSecurity";
 
 export default function SettingsPage() {
   // Agency Settings State
-  const [agencyName, setAgencyName] = useState("CamEWeGo Travel & Express");
-  const [agencyCode, setAgencyCode] = useState("AGY-8942-CW");
   const [clientSmsNotify, setClientSmsNotify] = useState(true);
   const [autoInvoiceClient, setAutoInvoiceClient] = useState(true);
 
@@ -38,40 +37,6 @@ export default function SettingsPage() {
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8 flex flex-col gap-6">
-          {/* Agency Profile */}
-          <section className="bg-white/60 backdrop-blur-xl rounded-3xl p-6 sm:p-8 border border-white/80 shadow-[0_20px_50px_rgba(0,0,0,0.03)] space-y-6">
-            <div className="border-b border-[#cfc4c5]/30 pb-4">
-              <h2 className="text-lg font-bold text-[#1a1c1c]">Agency Account Profile</h2>
-              <p className="text-xs text-[#7e7576]">Your agency's tenant details displayed on client receipts.</p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-bold text-[#7e7576] uppercase tracking-wider">
-                  Agency Brand Name
-                </label>
-                <input
-                  type="text"
-                  value={agencyName}
-                  onChange={(e) => setAgencyName(e.target.value)}
-                  className="w-full mt-1 px-4 py-2.5 bg-white border border-[#cfc4c5]/50 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-black transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-[#7e7576] uppercase tracking-wider">
-                  Agency ID / Code
-                </label>
-                <input
-                  type="text"
-                  readOnly
-                  value={agencyCode}
-                  className="w-full mt-1 px-4 py-2.5 bg-gray-100/80 border border-[#cfc4c5]/30 rounded-xl text-sm font-mono text-[#7e7576]"
-                />
-              </div>
-            </div>
-          </section>
-
           {/* Messaging & Notifications */}
           <section className="bg-white/60 backdrop-blur-xl rounded-3xl p-6 sm:p-8 border border-white/80 shadow-[0_20px_50px_rgba(0,0,0,0.03)] space-y-6">
             <div className="border-b border-[#cfc4c5]/30 pb-4">
@@ -111,6 +76,8 @@ export default function SettingsPage() {
               </div>
             </div>
           </section>
+
+          <AccountSecurity />
 
         </div>
 
