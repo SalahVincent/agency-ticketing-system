@@ -9,8 +9,9 @@ import {
 
 // In-memory sessions: fine for a demo (lost on restart, single instance only).
 interface Session {
-  state?: 'AWAITING_ROUTE_QUERY' | 'AWAITING_PASSENGER_NAME' | 'AWAITING_PAYMENT';
+  state?: 'AWAITING_ROUTE_QUERY' | 'AWAITING_AGENCY_ROUTE_QUERY' | 'AWAITING_PASSENGER_NAME' | 'AWAITING_PAYMENT';
   scheduleId?: string;
+  agencyId?: string;
   seatNum?: number;
   passengerName?: string;
 }
@@ -153,29 +154,45 @@ export class TelegramUpdate {
   async handleAgencySelected(@Ctx() ctx: Context) {
     await ctx.answerCbQuery();
     const agencyId = (ctx as any).match[1];
-
-    const schedules = await this.agenciesService.getAgencySchedules(agencyId);
-
-    if (!schedules || schedules.length === 0) {
-      await ctx.reply('No active route schedules available for this agency today.');
+    const agency = await this.agenciesService.getAgencyIdentity(agencyId);
+    if (!agency) {
+      await ctx.reply('That agency is no longer available. Send /start to choose another.');
       return;
     }
-
-    let messageText = `📍 Available routes for this agency today:\n\n`;
-    const scheduleButtons = schedules.map((schedule, idx) => {
-      const seatsLeft = schedule.totalSeats - schedule.bookedSeats;
-      messageText += `${idx + 1}️⃣ ${schedule.origin} ➔ ${schedule.destination} | ${schedule.departureTime} (${schedule.busType}) - ${schedule.pricePerSeat} XAF [${seatsLeft} seats left]\n`;
-      return [
-        {
-          text: `Book Option ${idx + 1} (${schedule.origin} ➔ ${schedule.destination})`,
-          callback_data: `book_schedule_${schedule.id}`,
-        },
-      ];
-    });
-
+    const schedules = await this.agenciesService.getAgencySchedules(agencyId);
+    const messageText = schedules.length
+      ? schedules.map((schedule, index) => this.formatBusDetails(schedule, agency.name, index + 1)).join('\n\n')
+      : 'No active route schedules are available for this agency today.';
+    const scheduleButtons = schedules.map((schedule, index) => [{
+      text: `Book ${index + 1}: ${schedule.origin} to ${schedule.destination}`.slice(0, 60),
+      callback_data: `book_schedule_${schedule.id}`,
+    }]);
+    scheduleButtons.push([{ text: 'Search routes in this agency', callback_data: `agency_search_routes_${agencyId}` }]);
     await ctx.reply(messageText, { reply_markup: { inline_keyboard: scheduleButtons } });
   }
 
+  @Action(/^agency_search_routes_(.+)$/)
+  async handleAgencyRouteSearch(@Ctx() ctx: Context) {
+    await ctx.answerCbQuery();
+    const agencyId = (ctx as any).match[1];
+    const userId = ctx.from?.id;
+    if (userId) sessions.set(userId, { state: 'AWAITING_AGENCY_ROUTE_QUERY', agencyId });
+    const agency = await this.agenciesService.getAgencyIdentity(agencyId);
+    await ctx.reply(`Search routes under ${agency?.name ?? 'this agency'}. Enter an origin and destination, for example: Douala to Bafoussam.`);
+  }
+
+  private formatBusDetails(schedule: any, agencyName: string, index?: number): string {
+    const seatsLeft = Math.max(0, schedule.totalSeats - schedule.bookedSeats);
+    const status = schedule.status === 'DEPARTED' ? 'On route' : schedule.status === 'BOARDING' ? 'Boarding' : 'Scheduled';
+    return [
+      `${index ? `${index}. ` : ''}${agencyName}`,
+      `Bus: ${schedule.busName} (${schedule.busNumber})`,
+      `Route: ${schedule.origin} to ${schedule.destination}`,
+      `Departure: ${schedule.departureTime} | ${status}`,
+      `Type: ${String(schedule.busType).replace(/_/g, ' ')} | Seats: ${seatsLeft}/${schedule.totalSeats} available`,
+      `Fare: ${xaf(schedule.pricePerSeat)}`,
+    ].join('\n');
+  }
   // 4. Flow 2: quick route search prompt
   @Action('flow_search_routes')
   async handleFlowSearchRoutes(@Ctx() ctx: Context) {
@@ -238,59 +255,41 @@ export class TelegramUpdate {
     }
 
     // --- Route search step ---
-    if (session?.state === 'AWAITING_ROUTE_QUERY') {
-      sessions.delete(userId);
-
-      const parts = text.toLowerCase().split(/\s+(?:to|-|->|➔)\s+/);
-      if (parts.length < 2) {
-        await ctx.reply(
-          '⚠️ Invalid format. Please enter route as "Origin to Destination" (e.g., Douala to Yaounde).',
-        );
+    if (session?.state === 'AWAITING_ROUTE_QUERY' || session?.state === 'AWAITING_AGENCY_ROUTE_QUERY') {
+      const parts = text.toLowerCase().split(/\s+(?:to|->|-)\s+/i).map((part) => part.trim()).filter(Boolean);
+      if (parts.length !== 2) {
+        await ctx.reply('Please enter a route as "Origin to Destination", for example: Douala to Bafoussam.');
         return;
       }
-
-      const origin = parts[0].trim();
-      const destination = parts[1].trim();
-
-      const agencies = await this.agenciesService.getActiveAgencies();
-      const matches: any[] = [];
-
+      sessions.delete(userId);
+      const [origin, destination] = parts;
+      const isAgencySearch = session.state === 'AWAITING_AGENCY_ROUTE_QUERY' && session.agencyId;
+      const agencies = isAgencySearch
+        ? [await this.agenciesService.getAgencyIdentity(session.agencyId!)].filter(Boolean) as { id: string; name: string }[]
+        : await this.agenciesService.getActiveAgencies();
+      const matches: { schedule: any; agencyName: string }[] = [];
       for (const agency of agencies) {
         const schedules = await this.agenciesService.getAgencySchedules(agency.id);
-        schedules
-          .filter(
-            (s) =>
-              s.origin.toLowerCase().includes(origin) &&
-              s.destination.toLowerCase().includes(destination),
-          )
-          .forEach((s) => matches.push({ ...s, agencyName: agency.name }));
+        for (const schedule of schedules) {
+          const fromMatches = schedule.origin.toLowerCase().includes(origin);
+          const toMatches = schedule.destination.toLowerCase().includes(destination);
+          if (fromMatches && toMatches && schedule.status !== 'DEPARTED' && schedule.bookedSeats < schedule.totalSeats) {
+            matches.push({ schedule, agencyName: agency.name });
+          }
+        }
       }
-
-      if (matches.length === 0) {
-        await ctx.reply(
-          `No available buses found for route: ${text}. Try searching another route or tap /start to pick an agency directly.`,
-        );
+      if (!matches.length) {
+        await ctx.reply(`No available buses found for ${origin} to ${destination}${isAgencySearch ? ' under this agency' : ''}. Try another route or send /start.`);
         return;
       }
-
-      let summaryText = `📍 Available buses for ${origin.toUpperCase()} ➔ ${destination.toUpperCase()} today:\n\n`;
-      const optionButtons: any[] = [];
-
-      matches.forEach((sch, idx) => {
-        const seatsLeft = sch.totalSeats - sch.bookedSeats;
-        summaryText += `${idx + 1}️⃣ ${sch.agencyName} - ${sch.departureTime} (${sch.busType}) - ${sch.pricePerSeat} XAF [${seatsLeft} seats left]\n`;
-        optionButtons.push([
-          {
-            text: `Reply ${idx + 1} (Select ${sch.agencyName})`,
-            callback_data: `book_schedule_${sch.id}`,
-          },
-        ]);
-      });
-
-      await ctx.reply(summaryText, { reply_markup: { inline_keyboard: optionButtons } });
+      const reply = matches.slice(0, 10).map((item, index) => this.formatBusDetails(item.schedule, item.agencyName, index + 1)).join('\n\n');
+      const buttons = matches.slice(0, 10).map((item, index) => [{
+        text: `Book ${index + 1}: ${item.schedule.busName}`.slice(0, 60),
+        callback_data: `book_schedule_${item.schedule.id}`,
+      }]);
+      await ctx.reply(reply, { reply_markup: { inline_keyboard: buttons } });
       return;
     }
-
     await ctx.reply('Send /start to bring up the CAMEWEGO main menu.');
   }
 

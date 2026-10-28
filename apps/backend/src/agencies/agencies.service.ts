@@ -408,8 +408,15 @@ export class AgenciesService {
     });
   }
 
+  async getAgencyIdentity(agencyId: string): Promise<ActiveAgencySummary | null> {
+    return this.prisma.agency.findUnique({
+      where: { id: agencyId },
+      select: { id: true, name: true, agencyCode: true, hqLocation: true },
+    });
+  }
+
   async getAgencySchedules(agencyId: string): Promise<AgencyScheduleSummary[]> {
-    return this.prisma.routeSchedule.findMany({
+    const schedules = await this.prisma.routeSchedule.findMany({
       where: {
         agencyId,
         status: { not: 'CANCELLED' },
@@ -430,6 +437,59 @@ export class AgenciesService {
       },
       orderBy: { createdAt: 'asc' },
     });
+    const now = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Douala',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date());
+    const nowHour = Number(now.find((part) => part.type === 'hour')?.value ?? 0);
+    const nowMinute = Number(now.find((part) => part.type === 'minute')?.value ?? 0);
+    const currentMinute = nowHour * 60 + nowMinute;
+
+    return schedules.map((schedule) => {
+      const match = schedule.departureTime.match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
+      if (!match || schedule.status === ScheduleStatus.DEPARTED) return schedule;
+      let hour = Number(match[1]);
+      if (match[3]) {
+        hour %= 12;
+        if (match[3].toUpperCase() === 'PM') hour += 12;
+      }
+      const departureMinute = hour * 60 + Number(match[2]);
+      const elapsedMinutes = currentMinute - departureMinute;
+      const status = elapsedMinutes >= 45
+        ? ScheduleStatus.DEPARTED
+        : elapsedMinutes >= 0
+          ? ScheduleStatus.BOARDING
+          : ScheduleStatus.ON_TIME;
+      return { ...schedule, status };
+    });
+  }
+
+  async deleteAgencySchedule(scheduleId: string, agencyId: string): Promise<{ success: true; cancelled: boolean }> {
+    const schedule = await this.prisma.routeSchedule.findFirst({
+      where: { id: scheduleId, agencyId },
+      select: { id: true },
+    });
+    if (!schedule) throw new NotFoundException('Travel session not found for this agency.');
+    const cancelled = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "RouteSchedule" WHERE "id" = ${schedule.id} FOR UPDATE`;
+      const ticketCount = await tx.ticket.count({ where: { scheduleId: schedule.id } });
+      if (ticketCount === 0) {
+        await tx.routeSchedule.delete({ where: { id: schedule.id } });
+        return false;
+      }
+      await tx.ticket.updateMany({
+        where: { scheduleId: schedule.id, status: { not: 'CANCELLED' } },
+        data: { status: 'CANCELLED' },
+      });
+      await tx.routeSchedule.update({
+        where: { id: schedule.id },
+        data: { status: ScheduleStatus.CANCELLED, bookedSeats: 0 },
+      });
+      return true;
+    });
+    return { success: true, cancelled };
   }
 
   async createAgencySchedule(

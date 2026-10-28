@@ -59,6 +59,14 @@ export class AgenciesController {
     return this.agenciesService.createAgencySchedule(agent.agencyId, body);
   }
 
+  @Delete('schedules/:scheduleId')
+  async cancelSchedule(
+    @Param('scheduleId') scheduleId: string,
+    @CurrentAgent() agent: CurrentAgentContext,
+  ): Promise<{ success: true }> {
+    return this.agenciesService.deleteAgencySchedule(scheduleId, agent.agencyId);
+  }
+
   @Get('schedules/:scheduleId/booked-seats')
   async getBookedSeatNumbers(
     @Param('scheduleId') scheduleId: string,
