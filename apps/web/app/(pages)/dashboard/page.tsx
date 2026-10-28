@@ -19,6 +19,7 @@ interface DashboardSummary {
   trips: number;
   boardedCount: number;
   activity: DashboardActivityItem[];
+  revenueTrend: { label: string; revenue: number }[];
 }
 
 const formatCurrency = (value: number) =>
@@ -54,7 +55,7 @@ export default function DashboardPage() {
 
     const loadSummary = async () => {
       try {
-        const data = await fetchApi<DashboardSummary>("/dashboard", getToken);
+        const data = await fetchApi<DashboardSummary>(`/dashboard?timeframe=${timeframe}`, getToken);
         setSummary(data);
       } catch (err) {
         console.error("Failed to load dashboard summary", err);
@@ -69,7 +70,7 @@ export default function DashboardPage() {
     };
 
     loadSummary();
-  }, [getToken, isLoaded, isSignedIn]);
+  }, [getToken, isLoaded, isSignedIn, timeframe]);
 
   const filteredActivity = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -83,6 +84,9 @@ export default function DashboardPage() {
       );
     });
   }, [searchQuery, summary]);
+  const boardedRate = summary?.bookedSeats
+    ? Math.round((summary.boardedCount / summary.bookedSeats) * 100)
+    : 0;
 
   return (
     <div className="w-full max-w-[1440px] mx-auto flex-1 flex flex-col gap-8 px-4 sm:px-6 py-4 pb-16">
@@ -154,9 +158,6 @@ export default function DashboardPage() {
                   payments
                 </span>
               </div>
-              <span className="text-[10px] sm:text-xs font-bold tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 sm:px-3 sm:py-1 rounded-full">
-                +14.2%
-              </span>
             </div>
             <div>
               <h3 className="text-xs sm:text-sm font-semibold text-[#4c4546] mb-0.5 truncate">
@@ -175,9 +176,6 @@ export default function DashboardPage() {
                   confirmation_number
                 </span>
               </div>
-              <span className="text-[10px] sm:text-xs font-bold tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 sm:px-3 sm:py-1 rounded-full">
-                +8.5%
-              </span>
             </div>
             <div>
               <h3 className="text-xs sm:text-sm font-semibold text-[#4c4546] mb-0.5 truncate">
@@ -218,7 +216,7 @@ export default function DashboardPage() {
                 </span>
               </div>
               <span className="text-[10px] sm:text-xs font-bold tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 sm:px-3 sm:py-1 rounded-full">
-                96.8%
+                {boardedRate}% boarded
               </span>
             </div>
             <div>
@@ -236,8 +234,8 @@ export default function DashboardPage() {
       {/* Main Content Grid */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Ticket Revenue Chart View */}
-        <div className="lg:col-span-2 bg-white/60 backdrop-blur-xl border border-white/80 shadow-[0_20px_50px_rgba(0,0,0,0.03)] rounded-3xl p-6 sm:p-8 flex flex-col">
-          <div className="flex justify-between items-center mb-6">
+        <div className="lg:col-span-2 min-w-0 bg-white/60 backdrop-blur-xl border border-white/80 shadow-[0_20px_50px_rgba(0,0,0,0.03)] rounded-3xl p-6 sm:p-8 flex flex-col">
+          <div className="mb-6 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
             <div>
               <h2 className="text-lg font-bold text-[#1a1c1c]">
                 Agency Revenue Trend
@@ -272,47 +270,30 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Chart Visualization */}
-          <div className="flex-1 flex items-end gap-2 h-60 mt-2 relative">
-            <div className="absolute left-0 top-0 bottom-0 flex flex-col justify-between text-[#7e7576] text-[10px] font-mono pb-8">
-              <span>800k</span>
-              <span>400k</span>
-              <span>0 FCFA</span>
-            </div>
-
-            <div className="w-full flex justify-between items-end h-full pl-12 pb-8 border-b border-[#cfc4c5]/30 relative">
-              <div className="w-1/12 bg-black/10 rounded-t-lg h-[40%] relative hover:bg-black/20 transition-colors">
-                <div className="absolute bottom-0 w-full bg-black rounded-t-lg h-[30%]" />
-              </div>
-              <div className="w-1/12 bg-black/10 rounded-t-lg h-[65%] relative hover:bg-black/20 transition-colors">
-                <div className="absolute bottom-0 w-full bg-black rounded-t-lg h-[50%]" />
-              </div>
-              <div className="w-1/12 bg-black/10 rounded-t-lg h-[45%] relative hover:bg-black/20 transition-colors">
-                <div className="absolute bottom-0 w-full bg-black rounded-t-lg h-[30%]" />
-              </div>
-              <div className="w-1/12 bg-black/10 rounded-t-lg h-[80%] relative hover:bg-black/20 transition-colors">
-                <div className="absolute bottom-0 w-full bg-black rounded-t-lg h-[70%]" />
-              </div>
-              <div className="w-1/12 bg-black/10 rounded-t-lg h-[95%] relative hover:bg-black/20 transition-colors">
-                <div className="absolute bottom-0 w-full bg-black rounded-t-lg h-[85%]" />
-              </div>
-              <div className="w-1/12 bg-black/10 rounded-t-lg h-[70%] relative hover:bg-black/20 transition-colors">
-                <div className="absolute bottom-0 w-full bg-black rounded-t-lg h-[55%]" />
-              </div>
-              <div className="w-1/12 bg-black/10 rounded-t-lg h-[90%] relative hover:bg-black/20 transition-colors">
-                <div className="absolute bottom-0 w-full bg-black rounded-t-lg h-[80%]" />
-              </div>
-            </div>
-
-            <div className="absolute bottom-0 left-12 right-0 flex justify-between text-[#7e7576] text-[11px] font-semibold pt-2">
-              <span>Mon</span>
-              <span>Tue</span>
-              <span>Wed</span>
-              <span>Thu</span>
-              <span>Fri</span>
-              <span>Sat</span>
-              <span>Sun</span>
-            </div>
+          <div className="mt-2 min-h-64 w-full min-w-0">
+            {summary?.revenueTrend?.length ? (() => {
+              const maxRevenue = Math.max(0, ...summary.revenueTrend.map((point) => point.revenue));
+              const scale = maxRevenue || 1;
+              return (
+                <div className="flex h-64 min-w-0 flex-col">
+                  <div className="mb-2 flex justify-between text-[10px] font-medium text-[#7e7576]"><span>Peak {formatCurrency(maxRevenue)}</span><span>{summary.revenueTrend.every((point) => point.revenue === 0) ? "No ticket revenue in this period" : "Confirmed ticket revenue"}</span></div>
+                  <div className="flex min-h-0 flex-1 items-end gap-2 border-b border-[#cfc4c5]/30 px-1 sm:gap-3">
+                    {summary.revenueTrend.map((point) => {
+                      const height = point.revenue ? Math.max(4, (point.revenue / scale) * 100) : 0;
+                      return (
+                        <div key={point.label} className="group flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2">
+                          <span className="max-w-full truncate text-[9px] font-medium text-[#7e7576] sm:text-[10px]" title={formatCurrency(point.revenue)}>{point.revenue ? `${Math.round(point.revenue / 1000)}k` : ""}</span>
+                          <div className="flex h-[78%] w-full items-end rounded-t-lg bg-black/5">
+                            <div className="w-full rounded-t-lg bg-black transition-[height] duration-500 group-hover:bg-emerald-700" style={{ height: `${height}%` }} />
+                          </div>
+                          <span className="w-full truncate text-center text-[9px] font-semibold text-[#7e7576] sm:text-[10px]">{point.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })() : <div className="flex h-64 items-center justify-center text-xs text-[#7e7576]">Loading revenue trend…</div>}
           </div>
         </div>
 

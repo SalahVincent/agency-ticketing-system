@@ -50,10 +50,16 @@ export default function ProfilePage() {
   const [isUpdatingDuty, setIsUpdatingDuty] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [metrics, setMetrics] = useState({ ticketsIssued: 0, passengersServed: 0 });
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
     let active = true;
+    fetchApi<{ bookedSeats: number; boardedCount: number }>("/dashboard", getToken)
+      .then((data) => {
+        if (active) setMetrics({ ticketsIssued: data.bookedSeats, passengersServed: data.boardedCount });
+      })
+      .catch(() => undefined);
     fetchApi<AgencyProfile>("/agencies/profile", getToken)
       .then((data) => {
         if (!active) return;
@@ -170,8 +176,8 @@ export default function ProfilePage() {
   if (!profile || !form) return <div role="alert" className="max-w-4xl mx-auto rounded-3xl bg-white/80 p-8 text-sm text-red-700">{error || "No agency profile is linked to this account."}</div>;
 
   const stats = [
-    { label: "Tickets Issued Today", value: "—", icon: "confirmation_number" },
-    { label: "Passengers Served", value: "—", icon: "groups" },
+    { label: "Tickets Issued", value: metrics.ticketsIssued.toLocaleString(), icon: "confirmation_number" },
+    { label: "Passengers Served", value: metrics.passengersServed.toLocaleString(), icon: "groups" },
     { label: "Active Routes", value: form.primaryRoutes || "—", icon: "route" },
   ];
 

@@ -18,7 +18,7 @@ interface RouteSchedule {
   totalSeats: number;
   bookedSeats: number;
   pricePerSeat: number;
-  status: "On Time" | "Boarding" | "Departed";
+  status: "On Time" | "Boarding" | "On Route";
 }
 
 const formatDepartureTime = (value: string): string => {
@@ -56,7 +56,7 @@ const normalizeSchedule = (item: any): RouteSchedule => {
   const statusMap: Record<string, RouteSchedule["status"]> = {
     ON_TIME: "On Time",
     BOARDING: "Boarding",
-    DEPARTED: "Departed",
+    DEPARTED: "On Route",
   };
 
   return {
@@ -107,6 +107,7 @@ export default function InventoryPage() {
   const [bookingResult, setBookingResult] = useState<BookingResult | null>(null);
   const [isBooking, setIsBooking] = useState(false);
   const [bookingError, setBookingError] = useState("");
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<"inventory" | "bot_creator">(
     "inventory",
@@ -120,6 +121,7 @@ export default function InventoryPage() {
     number[]
   >([]);
   const [inventoryError, setInventoryError] = useState("");
+  const [inventoryNotice, setInventoryNotice] = useState("");
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
@@ -142,7 +144,9 @@ export default function InventoryPage() {
       }
     };
 
-    loadSchedules();
+    void loadSchedules();
+    const refreshId = window.setInterval(() => void loadSchedules(), 60_000);
+    return () => window.clearInterval(refreshId);
   }, [getToken, isLoaded, isSignedIn]);
 
   useEffect(() => {
@@ -188,8 +192,6 @@ export default function InventoryPage() {
   const [newBusType, setNewBusType] = useState<BusType>("vip_2x2");
   const [newPrice, setNewPrice] = useState("");
 
-  const [botPhoneNumber, setBotPhoneNumber] = useState("");
-  const [botStatus, setBotStatus] = useState<"active" | "paused" | "offline">("offline");
   const stationName = agencyIdentity?.agent?.station || agencyIdentity?.agency.hqLocation || "Agency terminal";
   const [welcomeMessage, setWelcomeMessage] = useState("");
   const [botRules, setBotRules] = useState<BotRule[]>([]);
@@ -296,6 +298,24 @@ export default function InventoryPage() {
           ? error.message
           : "Unable to create the travel session.",
       );
+    }
+  };
+
+  const handleDeleteSession = async (schedule: RouteSchedule) => {
+    if (!window.confirm(`Delete ${schedule.busName} (${schedule.origin} to ${schedule.destination})? An empty session will be removed. If tickets exist, the session and those tickets will be cancelled and kept in history.`)) return;
+    setDeletingSessionId(schedule.id);
+    setInventoryError("");
+    setInventoryNotice("");
+    try {
+      const result = await fetchApi<{ success: true; cancelled: boolean }>(`/agencies/schedules/${schedule.id}`, getToken, { method: "DELETE" });
+      const remaining = schedules.filter((item) => item.id !== schedule.id);
+      setSchedules(remaining);
+      if (selectedRoute === schedule.id) setSelectedRoute(remaining[0]?.id ?? null);
+      setInventoryNotice(result.cancelled ? "Travel session and its tickets were cancelled. Ticket history is retained." : "Travel session deleted.");
+    } catch (error) {
+      setInventoryError(error instanceof Error ? error.message : "Unable to cancel this travel session.");
+    } finally {
+      setDeletingSessionId(null);
     }
   };
 
@@ -438,7 +458,7 @@ export default function InventoryPage() {
               <span className="material-symbols-outlined text-base">
                 smart_toy
               </span>
-              <span>WhatsApp Bot</span>
+              <span>Bot</span>
             </button>
           </div>
         </div>
@@ -482,6 +502,8 @@ export default function InventoryPage() {
               </div>
             </div>
 
+            {inventoryNotice && <p role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">{inventoryNotice}</p>}
+
             {/* Responsive Routes Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
               {inventoryError ? (
@@ -518,11 +540,19 @@ export default function InventoryPage() {
                             "{item.busName}"
                           </h4>
                         </div>
-                        <span
-                          className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${isSelected ? "bg-white/20 text-white" : "bg-black/5 text-[#4c4546]"}`}
-                        >
-                          {item.busNumber}
-                        </span>
+                        <div className="flex shrink-0 flex-col items-end gap-1.5">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isSelected ? "bg-white/20 text-white" : "bg-black/5 text-[#4c4546]"}`}>
+                            {item.busNumber}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={deletingSessionId === item.id}
+                            onClick={(event) => { event.stopPropagation(); void handleDeleteSession(item); }}
+                            className={`text-[9px] font-bold transition-colors disabled:opacity-50 ${isSelected ? "text-rose-200 hover:text-white" : "text-rose-700 hover:text-rose-900"}`}
+                          >
+                            {deletingSessionId === item.id ? "Deleting…" : "Delete session"}
+                          </button>
+                        </div>
                       </div>
 
                       <div className="mb-3 pt-1 border-t border-gray-100/10">
@@ -552,6 +582,9 @@ export default function InventoryPage() {
                           className={`inline-block text-[10px] font-semibold mt-2 px-2 py-0.5 rounded truncate max-w-full ${isSelected ? "bg-white/10 text-emerald-300" : "bg-emerald-50 text-emerald-800"}`}
                         >
                           {item.busTypeName}
+                        </span>
+                        <span className={`ml-1 inline-block text-[10px] font-bold mt-2 px-2 py-0.5 rounded ${item.status === "On Route" ? "bg-blue-100 text-blue-800" : item.status === "Boarding" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-700"}`}>
+                          {item.status}
                         </span>
                       </div>
 
@@ -622,59 +655,25 @@ export default function InventoryPage() {
           </>
         )}
 
-        {/* TAB 2: WHATSAPP BOT CREATOR */}
+        {/* TAB 2: BOT PREVIEW */}
         {activeTab === "bot_creator" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
             <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+              <div role="note" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
+                Bot controls here are a temporary preview only. The portal does not publish commands or settings to Telegram or WhatsApp yet; manage bot commands in the bot platform for now.
+              </div>
               <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
                   <div>
                     <h2 className="text-base sm:text-lg font-bold text-[#1a1c1c] flex items-center gap-2 flex-wrap">
-                      <span>WhatsApp Bot — {stationName}</span>
+                      <span>Bot — {stationName}</span>
                       <span className="text-[10px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                        {botStatus.toUpperCase()}
+                        Preview only
                       </span>
                     </h2>
                     <p className="text-xs text-[#7e7576]">
-                      Auto-responder instance for this station
+                      Temporary command preview for this station
                     </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setBotStatus(botStatus === "active" ? "paused" : "active")
-                    }
-                    className={`self-start sm:self-auto text-xs font-bold px-3.5 py-1.5 rounded-full cursor-pointer transition-colors ${
-                      botStatus === "active"
-                        ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
-                        : "bg-emerald-600 text-white hover:bg-emerald-700"
-                    }`}
-                  >
-                    {botStatus === "active" ? "Pause Bot" : "Activate Bot"}
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-1">
-                  <div>
-                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
-                      Bot Phone / ID
-                    </label>
-                    <input
-                      type="text"
-                      value={botPhoneNumber}
-                      onChange={(e) => setBotPhoneNumber(e.target.value)}
-                      className="w-full mt-1 bg-slate-50 border border-slate-200 text-xs sm:text-sm rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-black outline-none font-medium"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-[#7e7576] uppercase">
-                      Connected Gateway
-                    </label>
-                    <div className="w-full mt-1 bg-gray-100 text-xs sm:text-sm font-semibold rounded-xl px-3.5 py-2 text-[#1a1c1c] flex items-center justify-between">
-                      <span>Meta Cloud API</span>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    </div>
                   </div>
                 </div>
 
@@ -693,7 +692,7 @@ export default function InventoryPage() {
 
               <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm space-y-4 sm:space-y-6">
                 <h3 className="text-sm sm:text-base font-bold text-[#1a1c1c]">
-                  Response Flow Rules
+                  Preview Response Rules
                 </h3>
 
                 <form
@@ -701,7 +700,7 @@ export default function InventoryPage() {
                   className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 sm:p-4 space-y-3"
                 >
                   <div className="text-xs font-bold text-[#1a1c1c] uppercase tracking-wider">
-                    + Add Trigger Rule
+                    + Add a Rule to Preview
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -756,7 +755,7 @@ export default function InventoryPage() {
                     type="submit"
                     className="w-full sm:w-auto bg-black text-white text-xs font-semibold px-4 py-2 rounded-full hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-sm"
                   >
-                    Save Rule
+                    Add to Preview
                   </button>
                 </form>
 
@@ -817,14 +816,14 @@ export default function InventoryPage() {
                 <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-3">
                   <div className="flex items-center gap-2">
                     <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold text-xs">
-                      WA
+                      BOT
                     </div>
                     <div>
                       <h3 className="text-xs sm:text-sm font-bold text-[#1a1c1c]">
                         Bot Simulator
                       </h3>
                       <p className="text-[9px] sm:text-[10px] text-emerald-600 font-semibold">
-                        Live Preview
+                        Local Preview
                       </p>
                     </div>
                   </div>
