@@ -57,6 +57,7 @@ model Agency {
   name             String
   agencyCode       String          @unique
   hqLocation       String
+  primaryRoutes    String          @default("Not set")
   activeFleetCount String
   clientSmsNotify  Boolean         @default(false)
   autoInvoiceClient Boolean        @default(false)
@@ -79,7 +80,7 @@ model Agent {
   clerkUserId    String?     @unique
   name           String
   email          String      @unique
-  password       String
+  password       String?
   phone          String
   role           String
   station        String
