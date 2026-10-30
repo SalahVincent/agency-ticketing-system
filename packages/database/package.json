@@ -9,7 +9,7 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "build": "tsc"
+    "build": "prisma generate && tsc"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
