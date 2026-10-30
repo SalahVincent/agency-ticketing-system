@@ -1,4 +1,10 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
+const DEFAULT_API_BASE_URL = process.env.NODE_ENV === 'production'
+  ? 'https://camewego-api.onrender.com/api'
+  : 'http://localhost:3001/api';
+
+export const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL?.trim() || DEFAULT_API_BASE_URL
+).replace(/\/+$/, '');
 
 export async function fetchApi<T>(
   path: string,

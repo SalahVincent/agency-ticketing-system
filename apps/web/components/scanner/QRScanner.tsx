@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
 import jsQR from "jsqr";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
+import { API_BASE_URL } from "@/lib/api";
 
 interface TicketInfo {
   ticketId: string;
@@ -142,7 +142,7 @@ export default function QRScannerPage() {
         const token = await getToken();
         if (!token) throw new Error("Authentication required");
 
-        const res = await fetch(`${API_URL}/scanner/validate`, {
+      const res = await fetch(`${API_BASE_URL}/scanner/validate`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
