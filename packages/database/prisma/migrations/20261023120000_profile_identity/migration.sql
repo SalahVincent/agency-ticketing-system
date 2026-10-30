@@ -1,0 +1,3 @@
+ALTER TABLE "Agency" ADD COLUMN "primaryRoutes" TEXT NOT NULL DEFAULT 'Not set';
+
+ALTER TABLE "Agent" ALTER COLUMN "password" DROP NOT NULL;
